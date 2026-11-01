@@ -1,0 +1,31 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+build/
+.gradle/
+.vs/
+.vscode/
+.idea/
+
+# Local Android SDK path
+local.properties
+captures/
+
+# Local runtimes and logs
+*.log
+*.user
+
+# Intermediate publish output. The ready-to-run Velvet.exe and APKs are tracked.
+publish/
+.tmp-publish/
+
+# Music lives in the Velvet Cloud release, not in git history.
+music/
+
+# Tool screenshots
+tools/shots/
+
+# OS clutter
+Thumbs.db
+desktop.ini
+.DS_Store

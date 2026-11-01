@@ -1,0 +1,1022 @@
+<Window x:Class="Velvet.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:Velvet.Desktop.Models"
+        xmlns:conv="clr-namespace:Velvet.Desktop.Converters"
+        xmlns:controls="clr-namespace:Velvet.Desktop.Controls"
+        Title="Velvet" Width="1280" Height="820" MinWidth="980" MinHeight="560"
+        WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
+        Background="{StaticResource InkBrush}" Foreground="{StaticResource TextPrimaryBrush}"
+        Icon="/Assets/velvet.ico" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        FontFamily="{StaticResource SansFont}" PreviewKeyDown="Window_PreviewKeyDown">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="4" GlassFrameThickness="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <conv:CoverImageConverter x:Key="CoverImage" />
+        <conv:ColorToBrushConverter x:Key="ColorToBrush" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:IdEqualsVisibilityConverter x:Key="IdEqualsVis" />
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <RadialGradientBrush x:Key="VinylBrush" GradientOrigin="0.32,0.24" Center="0.5,0.5"
+                             RadiusX="0.72" RadiusY="0.72">
+            <GradientStop Color="#2A2233" Offset="0" />
+            <GradientStop Color="#0C0A12" Offset="0.58" />
+            <GradientStop Color="#050408" Offset="1" />
+        </RadialGradientBrush>
+
+        <LinearGradientBrush x:Key="LineFadeMask" x:Shared="False" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="Transparent" Offset="0" />
+            <GradientStop Color="White" Offset="0.16" />
+            <GradientStop Color="White" Offset="0.84" />
+            <GradientStop Color="Transparent" Offset="1" />
+        </LinearGradientBrush>
+
+        <Style x:Key="TrackItemStyle" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" Background="{TemplateBinding Background}"
+                                CornerRadius="12" Margin="0,1">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="#0CFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="#12FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="Root" ClipToBounds="True">
+        <!-- Ambient light -->
+        <Canvas IsHitTestVisible="False">
+            <Ellipse Width="780" Height="780" Canvas.Left="-280" Canvas.Top="-380"
+                     Fill="{DynamicResource AccentAuroraDimBrush}" />
+            <Ellipse Width="620" Height="620" Canvas.Left="720" Canvas.Top="-300"
+                     Fill="{DynamicResource AccentAuroraSoftDimBrush}" />
+            <Ellipse Width="700" Height="700" Canvas.Left="420" Canvas.Top="520"
+                     Fill="{DynamicResource AccentAuroraSoftFaintBrush}" />
+        </Canvas>
+        <Rectangle x:Name="Grain" Fill="{StaticResource GrainBrush}" IsHitTestVisible="False" />
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="38" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Title bar -->
+            <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,0,0">
+                    <Border Width="20" Height="20" CornerRadius="10" Background="#0E0B12"
+                            BorderBrush="{StaticResource GoldBrush}" BorderThickness="1.1">
+                        <TextBlock Text="V" FontFamily="{StaticResource SerifFont}" FontSize="12"
+                                   Foreground="{StaticResource GoldBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="VELVET" Margin="10,0,0,0" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                    <Border Width="1" Height="12" Background="{StaticResource LineBrush}" Margin="12,0" />
+                    <TextBlock Text="PRIVATE LISTENING ROOM" FontSize="8.5"
+                               Foreground="{StaticResource TextTertiaryBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2,6,0"
+                            TextOptions.TextRenderingMode="Grayscale" TextOptions.TextFormattingMode="Display">
+                    <Button Style="{StaticResource WindowButtonStyle}" Click="Minimize_Click" ToolTip="Minimize"
+                            AutomationProperties.Name="Minimize">
+                        <TextBlock Text="&#xE921;" FontFamily="{StaticResource IconFont}" FontSize="10"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                    <Button x:Name="MaxButton" Style="{StaticResource WindowButtonStyle}"
+                            Click="Maximize_Click" ToolTip="Maximize" AutomationProperties.Name="Maximize">
+                        <TextBlock x:Name="MaximizeIcon" Text="&#xE922;" FontFamily="{StaticResource IconFont}"
+                                   FontSize="10"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                    <Button Style="{StaticResource CloseButtonStyle}" Click="Close_Click" ToolTip="Close"
+                            AutomationProperties.Name="Close">
+                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFont}" FontSize="10"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Main shell -->
+            <Grid x:Name="ContentRoot" Grid.Row="1" Opacity="0" Focusable="True"
+                  FocusVisualStyle="{x:Null}">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="ContentShift" Y="14" />
+                </Grid.RenderTransform>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="250" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="352" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left rail -->
+                <Border Grid.Column="0" Background="#7A09070E" BorderThickness="0">
+                    <ScrollViewer VerticalScrollBarVisibility="Hidden">
+                        <StackPanel Margin="20,16,20,22">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="46" Height="46" CornerRadius="23" Background="#0F0B14"
+                                        BorderBrush="{StaticResource GoldBrush}" BorderThickness="1.2">
+                                    <TextBlock Text="V" FontFamily="{StaticResource SerifFont}" FontSize="24"
+                                               Foreground="{StaticResource GoldBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="VELVET" FontFamily="{StaticResource SerifFont}" FontSize="23" />
+                                    <TextBlock Text="PRIVATE LISTENING" FontSize="8"
+                                               Foreground="{StaticResource TextTertiaryBrush}" Margin="1,2,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <TextBlock Text="LIBRARY" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextTertiaryBrush}" Margin="2,30,0,10" />
+
+                            <Border x:Name="FolderCard" Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                    CornerRadius="16" Padding="14">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="12" Foreground="{DynamicResource AccentBrush}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="MUSIC FOLDER" FontSize="8.5" Margin="7,0,0,0"
+                                                   Foreground="{StaticResource TextTertiaryBrush}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding FolderName}" FontSize="13" Margin="0,9,0,0"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding FolderSummary}" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                                    <Grid x:Name="ButtonRow" Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Style="{StaticResource PillButtonStyle}" Click="ChooseFolder_Click"
+                                                Margin="0,0,6,0" Padding="10,0">
+                                            <TextBlock Text="Change folder" />
+                                        </Button>
+                                        <Button Grid.Column="1" Style="{StaticResource GhostButtonStyle}" Click="Rescan_Click"
+                                                Padding="12,0">
+                                            <TextBlock Text="Rescan" />
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="THEME" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextTertiaryBrush}" Margin="2,26,0,10" />
+
+                            <ItemsControl ItemsSource="{x:Static models:Accents.All}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="2" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:AccentPalette}">
+                                        <Button Style="{StaticResource SwatchButtonStyle}" Tag="{Binding Key}"
+                                                Click="Accent_Click" ToolTip="{Binding Label}">
+                                            <Grid>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="10" Height="10" CornerRadius="5"
+                                                            Background="{Binding Primary, Converter={StaticResource ColorToBrush}}"
+                                                            VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding Label}" FontSize="10" Margin="8,0,0,0"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                                <Border CornerRadius="12" Margin="-6,-4"
+                                                        Background="{DynamicResource AccentRowBrush}">
+                                                    <Border.Visibility>
+                                                        <MultiBinding Converter="{StaticResource IdEqualsVis}">
+                                                            <Binding Path="Tag" RelativeSource="{RelativeSource AncestorType=Button}" />
+                                                            <Binding Path="AccentKey" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                        </MultiBinding>
+                                                    </Border.Visibility>
+                                                </Border>
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="WINDOWS MEDIA" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextTertiaryBrush}" Margin="2,22,0,10" />
+
+                            <Border Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                    CornerRadius="16" Padding="14">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}"
+                                                 VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding SessionStatus}" FontSize="8.5" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource AccentBrush}" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding SessionDetail}" FontSize="10.5" Margin="0,8,0,0"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" MaxWidth="190" />
+                                    <TextBlock Text="Windows volume flyout, media keys and Island Media Controls read this session."
+                                               FontSize="9" Margin="0,7,0,0"
+                                               Foreground="{StaticResource TextTertiaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="VISUALS" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextTertiaryBrush}" Margin="2,20,0,8" />
+
+                            <Border Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                    CornerRadius="16" Padding="14">
+                                <StackPanel>
+                                    <Grid>
+                                        <TextBlock Text="Spectrum sensitivity" FontSize="9.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding VisualizerSensitivityLabel}" FontSize="9"
+                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <Slider Style="{StaticResource VelvetSliderStyle}" Minimum="0.4"
+                                            Maximum="3" Margin="0,4,0,0"
+                                            Value="{Binding VisualizerSensitivity, Mode=TwoWay}" />
+                                    <Button Style="{StaticResource GhostButtonStyle}" Margin="0,10,0,0"
+                                            HorizontalAlignment="Stretch" Content="{Binding IslandButtonText}"
+                                            Click="ToggleIsland_Click" ToolTip="Ctrl+I" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#0CFFFFFF" BorderBrush="{StaticResource LineBrush}"
+                                    BorderThickness="1" CornerRadius="14" Padding="12" Margin="0,20,0,0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,7">
+                                        <TextBlock Text="Play / pause" FontSize="9.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <Border HorizontalAlignment="Right" Background="#12FFFFFF"
+                                                CornerRadius="5" Padding="6,2">
+                                            <TextBlock Text="SPACE" FontSize="8"
+                                                       Foreground="{StaticResource TextTertiaryBrush}" />
+                                        </Border>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,7">
+                                        <TextBlock Text="Previous / next" FontSize="9.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <Border HorizontalAlignment="Right" Background="#12FFFFFF"
+                                                CornerRadius="5" Padding="6,2">
+                                            <TextBlock Text="CTRL ← →" FontSize="8"
+                                                       Foreground="{StaticResource TextTertiaryBrush}" />
+                                        </Border>
+                                    </Grid>
+                                    <Grid>
+                                        <TextBlock Text="Choose folder" FontSize="9.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <Border HorizontalAlignment="Right" Background="#12FFFFFF"
+                                                CornerRadius="5" Padding="6,2">
+                                            <TextBlock Text="CTRL O" FontSize="8"
+                                                       Foreground="{StaticResource TextTertiaryBrush}" />
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Center column -->
+                <Grid Grid.Column="1" Margin="30,20,22,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Greeting}" FontSize="11"
+                                       Foreground="{StaticResource TextTertiaryBrush}" />
+                            <TextBlock Text="Your private listening room"
+                                       FontFamily="{StaticResource SerifFont}" FontSize="30"
+                                       Margin="0,2,0,0" />
+                            <TextBlock Text="Every file stays on this PC. Nothing leaves the room."
+                                       FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                       Margin="0,5,0,0" />
+                        </StackPanel>
+
+                        <Grid x:Name="SearchHost" Width="262" Height="40" VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <Border x:Name="SearchShell" CornerRadius="20" Background="{StaticResource SurfaceBrush}"
+                                    BorderThickness="1.4">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#9A8B7CF6" BlurRadius="16" ShadowDepth="0" />
+                                </Border.Effect>
+                                <Grid Margin="14,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                               Foreground="{StaticResource TextTertiaryBrush}"
+                                               VerticalAlignment="Center" />
+                                    <Grid Grid.Column="1" Margin="9,0,0,0">
+                                        <TextBox x:Name="SearchBox"
+                                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                                 Background="Transparent" BorderThickness="0" FontSize="11.5"
+                                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                                 CaretBrush="{DynamicResource AccentBrush}"
+                                                 SelectionBrush="{DynamicResource AccentSoftBrush}"
+                                                 VerticalContentAlignment="Center" Padding="0" />
+                                        <TextBlock x:Name="SearchHint" Text="Search titles, artists, albums…" IsHitTestVisible="False"
+                                                   FontSize="11.5" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource TextTertiaryBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Text, ElementName=SearchBox}"
+                                                                     Value="">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Velvet Mix -->
+                    <Border Grid.Row="1" Margin="0,18,0,0" CornerRadius="24" Padding="22"
+                            Background="{DynamicResource AccentHeroBrush}"
+                            BorderBrush="{DynamicResource AccentSoftBrush}" BorderThickness="1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="300" />
+                            </Grid.ColumnDefinitions>
+
+                            <Rectangle Grid.ColumnSpan="2" Margin="-22" RadiusX="24" RadiusY="24"
+                                       Fill="{DynamicResource HeroVeinBrush}" IsHitTestVisible="False" />
+                            <Rectangle Grid.ColumnSpan="2" Margin="-22" RadiusX="24" RadiusY="24"
+                                       IsHitTestVisible="False">
+                                <Rectangle.Fill>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1" Opacity="0.5">
+                                        <GradientStop Color="#00FFFFFF" Offset="0.30" />
+                                        <GradientStop Color="#0CFFFFFF" Offset="0.46" />
+                                        <GradientStop Color="#00FFFFFF" Offset="0.60" />
+                                    </LinearGradientBrush>
+                                </Rectangle.Fill>
+                            </Rectangle>
+
+                            <StackPanel VerticalAlignment="Center" MaxWidth="360" HorizontalAlignment="Left">
+                                <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="10"
+                                        Padding="10,4" HorizontalAlignment="Left">
+                                    <TextBlock Text="CURATED FOR YOU" FontSize="8" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentBrightBrush}" />
+                                </Border>
+                                <TextBlock Text="Velvet Mix" FontFamily="{StaticResource SerifFont}"
+                                           FontSize="36" Margin="0,8,0,0" />
+                                <TextBlock Text="Everything in your room, reshuffled into something new every time."
+                                           FontSize="10.5" Foreground="#CFC7DA"
+                                           TextWrapping="Wrap" Margin="0,5,0,0" MaxWidth="320"
+                                           HorizontalAlignment="Left" />
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button Style="{StaticResource PillButtonStyle}" Height="36" Padding="17,0"
+                                            Click="Mix_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}"
+                                                       FontSize="10" Foreground="#0B0810"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="Play mix" FontSize="11.5" Margin="8,0,0,0"
+                                                       Foreground="#0B0810" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <TextBlock Text="{Binding MixMetaText}" FontSize="9.5"
+                                               Foreground="#9E94B0" Margin="14,0,0,0"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <Grid Grid.Column="1" Height="142" Width="288">
+                                <Border Width="102" Height="102" CornerRadius="14"
+                                        HorizontalAlignment="Left" VerticalAlignment="Top" Margin="34,26,0,0"
+                                        RenderTransformOrigin="0.5,0.5"
+                                        BorderBrush="#22FFFFFF" BorderThickness="1">
+                                    <Border.RenderTransform>
+                                        <RotateTransform Angle="-9" />
+                                    </Border.RenderTransform>
+                                    <Border.Background>
+                                        <ImageBrush ImageSource="{Binding HeroCoverOne, Converter={StaticResource CoverImage}}"
+                                                    Stretch="UniformToFill" />
+                                    </Border.Background>
+                                </Border>
+
+                                <Border Width="102" Height="102" CornerRadius="14"
+                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,22,22,0"
+                                        RenderTransformOrigin="0.5,0.5"
+                                        BorderBrush="#22FFFFFF" BorderThickness="1">
+                                    <Border.RenderTransform>
+                                        <RotateTransform Angle="9" />
+                                    </Border.RenderTransform>
+                                    <Border.Background>
+                                        <ImageBrush ImageSource="{Binding HeroCoverThree, Converter={StaticResource CoverImage}}"
+                                                    Stretch="UniformToFill" />
+                                    </Border.Background>
+                                </Border>
+
+                                <Border Width="114" Height="114" CornerRadius="16"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        RenderTransformOrigin="0.5,0.5"
+                                        BorderBrush="#33FFFFFF" BorderThickness="1">
+                                    <Border.RenderTransform>
+                                        <RotateTransform Angle="-2" />
+                                    </Border.RenderTransform>
+                                    <Border.Background>
+                                        <ImageBrush ImageSource="{Binding HeroCoverTwo, Converter={StaticResource CoverImage}}"
+                                                    Stretch="UniformToFill" />
+                                    </Border.Background>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Albums -->
+                    <StackPanel Grid.Row="2" Margin="0,18,0,0">
+                        <Grid Margin="0,0,2,8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="ALBUMS" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextTertiaryBrush}"
+                                           VerticalAlignment="Center" />
+                                <Border Width="22" Height="1" Background="{StaticResource LineBrush}"
+                                        Margin="10,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Style="{StaticResource IconButtonStyle}" Width="28" Height="28"
+                                        Click="AlbumsLeft_Click" ToolTip="Scroll albums left">
+                                    <TextBlock Text="&#xE76B;" FontFamily="{StaticResource IconFont}" FontSize="10" />
+                                </Button>
+                                <Button Style="{StaticResource IconButtonStyle}" Width="28" Height="28"
+                                        Click="AlbumsRight_Click" ToolTip="Scroll albums right">
+                                    <TextBlock Text="&#xE76C;" FontFamily="{StaticResource IconFont}" FontSize="10" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <ScrollViewer x:Name="AlbumScroll" HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly">
+                            <ItemsControl ItemsSource="{Binding Albums}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:AlbumGroup}">
+                                        <Border Width="134" Margin="0,0,10,0" Background="Transparent"
+                                                Cursor="Hand" MouseLeftButtonDown="Album_MouseLeftButtonDown"
+                                                ToolTip="Double-click to play this album">
+                                            <StackPanel>
+                                                <Border Width="132" Height="132" CornerRadius="17"
+                                                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                                        RenderTransformOrigin="0.5,0.5">
+                                                    <Border.Background>
+                                                        <ImageBrush ImageSource="{Binding CoverPath, Converter={StaticResource CoverImage}}"
+                                                                    Stretch="UniformToFill" />
+                                                    </Border.Background>
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Opacity" Value="0.94" />
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Opacity" Value="1" />
+                                                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                </Border>
+                                                <TextBlock Text="{Binding Name}" FontSize="11" Margin="2,7,0,0"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding MetaText}" FontSize="8.5" Margin="2,2,0,0"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <!-- Tracks -->
+                    <Grid Grid.Row="3" Margin="0,16,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,2,8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="TRACKS" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextTertiaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding TrackCountText}" FontSize="9.5"
+                                           Foreground="{StaticResource TextTertiaryBrush}" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Opacity="0.8" />
+                            </StackPanel>
+                            <TextBlock Text="TITLE · A → Z" FontSize="9"
+                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                CornerRadius="12" Padding="12,9" Margin="0,0,0,8"
+                                Visibility="{Binding IsScanning, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="{Binding ScanText}" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding ScanPercent}" FontSize="9"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               HorizontalAlignment="Right" />
+                                </Grid>
+                                <ProgressBar Style="{StaticResource SlimProgressStyle}" Height="3"
+                                             Minimum="0" Maximum="1" Value="{Binding ScanFraction, Mode=OneWay}"
+                                             Margin="0,7,0,0" Foreground="{DynamicResource AccentBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <ListBox x:Name="TrackList" Grid.Row="2" ItemsSource="{Binding Tracks}"
+                                 Background="Transparent" BorderThickness="0" Padding="0,0,8,0"
+                                 ItemContainerStyle="{StaticResource TrackItemStyle}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                 MouseDoubleClick="TrackList_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:Track}">
+                                    <Grid Height="54">
+                                        <Border Background="{DynamicResource AccentRowBrush}" CornerRadius="12">
+                                            <Border.Visibility>
+                                                <MultiBinding Converter="{StaticResource IdEqualsVis}">
+                                                    <Binding Path="Id" />
+                                                    <Binding Path="CurrentId"
+                                                             RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                </MultiBinding>
+                                            </Border.Visibility>
+                                        </Border>
+
+                                        <Grid Margin="8,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="34" />
+                                                <ColumnDefinition Width="44" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="180" />
+                                                <ColumnDefinition Width="62" />
+                                                <ColumnDefinition Width="30" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Width="3" Height="24" CornerRadius="2"
+                                                    Background="{DynamicResource AccentBrush}"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                    Margin="-6,0,0,0">
+                                                <Border.Visibility>
+                                                    <MultiBinding Converter="{StaticResource IdEqualsVis}">
+                                                        <Binding Path="Id" />
+                                                        <Binding Path="CurrentId"
+                                                                 RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                    </MultiBinding>
+                                                </Border.Visibility>
+                                            </Border>
+
+                                            <Grid VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding NumberText}" FontSize="10"
+                                                           Foreground="{StaticResource TextTertiaryBrush}"
+                                                           HorizontalAlignment="Center">
+                                                    <TextBlock.Visibility>
+                                                        <MultiBinding Converter="{StaticResource IdEqualsVis}"
+                                                                      ConverterParameter="inverse">
+                                                            <Binding Path="Id" />
+                                                            <Binding Path="CurrentId"
+                                                                     RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Visibility>
+                                                </TextBlock>
+                                                <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="9" Foreground="{DynamicResource AccentBrush}"
+                                                           HorizontalAlignment="Center">
+                                                    <TextBlock.Visibility>
+                                                        <MultiBinding Converter="{StaticResource IdEqualsVis}">
+                                                            <Binding Path="Id" />
+                                                            <Binding Path="CurrentId"
+                                                                     RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Visibility>
+                                                </TextBlock>
+                                            </Grid>
+
+                                            <Border Grid.Column="1" Width="38" Height="38" CornerRadius="9"
+                                                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                                    VerticalAlignment="Center" HorizontalAlignment="Left">
+                                                <Border.Background>
+                                                    <ImageBrush ImageSource="{Binding CoverPath, Converter={StaticResource CoverImage}}"
+                                                                Stretch="UniformToFill" />
+                                                </Border.Background>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center"
+                                                        Margin="0,0,14,0">
+                                                <TextBlock Text="{Binding Title}" FontSize="12"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Artist}" FontSize="9.5"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+
+                                            <TextBlock Grid.Column="3" Text="{Binding Album}" FontSize="9.5"
+                                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+
+                                            <TextBlock Grid.Column="4" Text="{Binding DurationText}" FontSize="9.5"
+                                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                                       VerticalAlignment="Center" />
+
+                                            <Button Grid.Column="5" Style="{StaticResource IconButtonStyle}"
+                                                    Width="26" Height="26" Tag="{Binding}"
+                                                    Click="TrackPlay_Click" Opacity="0.55"
+                                                    ToolTip="Play">
+                                                <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="9" />
+                                            </Button>
+                                        </Grid>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Grid>
+
+                <!-- Now playing -->
+                <Border Grid.Column="2" Margin="0,18,20,20" CornerRadius="26"
+                        Background="{StaticResource PanelBrush}"
+                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                    <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="24,20,24,24">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="NOW PLAYING" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                                    <Ellipse Width="5" Height="5" Fill="{DynamicResource AccentBrush}"
+                                             Margin="8,0,0,0" VerticalAlignment="Center"
+                                             Visibility="{Binding HasCurrent, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                                <TextBlock Text="SMTC" FontSize="8.5"
+                                           Foreground="{StaticResource TextTertiaryBrush}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Grid Height="296" Margin="0,6,0,0">
+                                <controls:SpectrumVisualizer x:Name="Spectrum" Width="280" Height="280"
+                                                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                             Active="{Binding IsPlaying}"
+                                                             Sensitivity="{Binding VisualizerSensitivity}"
+                                                             GlowBrush="{Binding CurrentGlowBrush}"
+                                                             InnerFraction="0.42" LengthFraction="0.05"
+                                                             AccentBrush="{DynamicResource AccentBrush}"
+                                                             BrightBrush="{DynamicResource AccentBrightBrush}" />
+
+                                <Ellipse Width="236" Height="236"
+                                         StrokeThickness="1" StrokeDashArray="1 6"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Ellipse.Stroke>
+                                        <SolidColorBrush Color="{DynamicResource AccentColor}" Opacity="0.16" />
+                                    </Ellipse.Stroke>
+                                </Ellipse>
+
+                                <Grid Width="226" Height="226" HorizontalAlignment="Center"
+                                      VerticalAlignment="Center">
+                                    <Border CornerRadius="113" Width="226" Height="226"
+                                            BorderBrush="#26FFFFFF" BorderThickness="1">
+                                        <Border.Background>
+                                            <ImageBrush ImageSource="{Binding CurrentCover, Converter={StaticResource CoverImage}}"
+                                                        Stretch="UniformToFill" />
+                                        </Border.Background>
+                                    </Border>
+                                    <Border CornerRadius="113" BorderBrush="#40FFFFFF" BorderThickness="1"
+                                            IsHitTestVisible="False">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#24FFFFFF" Offset="0" />
+                                                <GradientStop Color="#00FFFFFF" Offset="0.42" />
+                                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+
+                            <StackPanel HorizontalAlignment="Center" Margin="0,14,0,0">
+                                <Grid x:Name="Line1" Width="210" Height="8" Margin="0,4,0,0" Opacity="0.55"
+                                      RenderTransformOrigin="0.5,0.5">
+                                    <Grid.RenderTransform>
+                                        <ScaleTransform ScaleX="0.45" />
+                                    </Grid.RenderTransform>
+                                    <Rectangle Height="6" RadiusX="3" RadiusY="3"
+                                               Fill="{DynamicResource AccentSoftBrush}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                    <Rectangle Height="2" RadiusX="1.5" RadiusY="1.5"
+                                               Fill="{DynamicResource AccentGradient}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                </Grid>
+
+                                <Grid x:Name="Line2" Width="244" Height="8" Margin="0,4,0,0" Opacity="0.75"
+                                      RenderTransformOrigin="0.5,0.5">
+                                    <Grid.RenderTransform>
+                                        <ScaleTransform ScaleX="0.55" />
+                                    </Grid.RenderTransform>
+                                    <Rectangle Height="6" RadiusX="3" RadiusY="3"
+                                               Fill="{DynamicResource AccentSoftBrush}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                    <Rectangle Height="2" RadiusX="1.5" RadiusY="1.5"
+                                               Fill="{DynamicResource AccentGradient}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                </Grid>
+
+                                <Grid x:Name="Line3" Width="276" Height="8" Margin="0,4,0,0"
+                                      RenderTransformOrigin="0.5,0.5">
+                                    <Grid.RenderTransform>
+                                        <ScaleTransform ScaleX="0.65" />
+                                    </Grid.RenderTransform>
+                                    <Rectangle Height="6" RadiusX="3" RadiusY="3"
+                                               Fill="{DynamicResource AccentSoftBrush}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                    <Rectangle Height="2.4" RadiusX="1.5" RadiusY="1.5"
+                                               Fill="{DynamicResource AccentGradient}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                </Grid>
+
+                                <Grid x:Name="Line4" Width="244" Height="8" Margin="0,4,0,0" Opacity="0.75"
+                                      RenderTransformOrigin="0.5,0.5">
+                                    <Grid.RenderTransform>
+                                        <ScaleTransform ScaleX="0.55" />
+                                    </Grid.RenderTransform>
+                                    <Rectangle Height="6" RadiusX="3" RadiusY="3"
+                                               Fill="{DynamicResource AccentSoftBrush}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                    <Rectangle Height="2" RadiusX="1.5" RadiusY="1.5"
+                                               Fill="{DynamicResource AccentGradient}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                </Grid>
+
+                                <Grid x:Name="Line5" Width="210" Height="8" Margin="0,4,0,0" Opacity="0.55"
+                                      RenderTransformOrigin="0.5,0.5">
+                                    <Grid.RenderTransform>
+                                        <ScaleTransform ScaleX="0.45" />
+                                    </Grid.RenderTransform>
+                                    <Rectangle Height="6" RadiusX="3" RadiusY="3"
+                                               Fill="{DynamicResource AccentSoftBrush}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                    <Rectangle Height="2" RadiusX="1.5" RadiusY="1.5"
+                                               Fill="{DynamicResource AccentGradient}"
+                                               OpacityMask="{StaticResource LineFadeMask}" />
+                                </Grid>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding CurrentTitle}" FontFamily="{StaticResource SerifFont}"
+                                       FontSize="25" Margin="0,14,0,0" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding CurrentArtist}" FontSize="11.5" Margin="0,4,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding CurrentAlbum}" FontSize="8.5" Margin="0,5,0,0"
+                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+
+                            <Slider x:Name="SeekSlider" Style="{StaticResource VelvetSliderStyle}"
+                                    Minimum="0" Maximum="1" Margin="0,14,0,0" Cursor="Hand"
+                                    Value="{Binding SeekValue, Mode=OneWay}"
+                                    PreviewMouseLeftButtonDown="SeekSlider_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="SeekSlider_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="SeekSlider_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="SeekSlider_LostMouseCapture" />
+                            <Grid Margin="0,1,0,0">
+                                <TextBlock Text="{Binding ElapsedText}" FontSize="9.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding TotalText}" FontSize="9.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                <Button Click="Shuffle_Click" ToolTip="Shuffle">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource TransportButtonStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ShuffleActive}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <TextBlock Text="&#xE8B1;" FontFamily="{StaticResource IconFont}" FontSize="15" />
+                                </Button>
+
+                                <Button Style="{StaticResource TransportButtonStyle}" Click="Previous_Click"
+                                        Margin="6,0,0,0" ToolTip="Previous">
+                                    <TextBlock Text="&#xE892;" FontFamily="{StaticResource IconFont}" FontSize="16" />
+                                </Button>
+
+                                <Button Style="{StaticResource PlayButtonStyle}" Click="PlayPause_Click"
+                                        Margin="14,0" ToolTip="Play or pause">
+                                    <TextBlock Text="{Binding PlayPauseGlyph}" FontFamily="{StaticResource IconFont}"
+                                               FontSize="20" Foreground="#0B0810" />
+                                </Button>
+
+                                <Button Style="{StaticResource TransportButtonStyle}" Click="Next_Click"
+                                        Margin="0,0,6,0" ToolTip="Next">
+                                    <TextBlock Text="&#xE893;" FontFamily="{StaticResource IconFont}" FontSize="16" />
+                                </Button>
+
+                                <Button Click="Repeat_Click" ToolTip="Repeat">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource TransportButtonStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding RepeatActive}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <Grid>
+                                        <TextBlock Text="&#xE8EE;" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <Border Background="{DynamicResource AccentBrush}" CornerRadius="4"
+                                                Padding="3,0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                Margin="0,-3,-8,0"
+                                                Visibility="{Binding RepeatOneActive, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="1" FontSize="7" Foreground="#0B0810" />
+                                        </Border>
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+
+                            <Grid Margin="0,12,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE767;" FontFamily="{StaticResource IconFont}" FontSize="13"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center" />
+                                    <Slider Width="158" Margin="10,0,0,0"
+                                            Style="{StaticResource VelvetSliderStyle}"
+                                            Minimum="0" Maximum="1"
+                                            Value="{Binding VolumeValue, Mode=TwoWay}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding VolumePercent}" FontSize="9"
+                                           Foreground="{StaticResource TextTertiaryBrush}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,18,0,0" />
+
+                            <Grid Margin="0,14,0,6">
+                                <TextBlock Text="UP NEXT" FontSize="9" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextTertiaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding QueueSummary}" FontSize="9"
+                                           Foreground="{StaticResource TextTertiaryBrush}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Upcoming}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:Track}">
+                                        <Button Style="{StaticResource QueueItemStyle}" Tag="{Binding}"
+                                                Click="JumpToTrack_Click">
+                                            <Grid Height="46">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="40" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="34" Height="34" CornerRadius="8"
+                                                        HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                                                    <Border.Background>
+                                                        <ImageBrush ImageSource="{Binding CoverPath, Converter={StaticResource CoverImage}}"
+                                                                    Stretch="UniformToFill" />
+                                                    </Border.Background>
+                                                </Border>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center"
+                                                            Margin="8,0,8,0">
+                                                    <TextBlock Text="{Binding Title}" FontSize="10.5"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Artist}" FontSize="8.5"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                                               Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding DurationText}"
+                                                           FontSize="8.5"
+                                                           Foreground="{StaticResource TextTertiaryBrush}"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Border Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                    CornerRadius="14" Padding="12" Margin="0,14,0,0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5" Height="5" Fill="{DynamicResource AccentBrush}"
+                                                 VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding SessionStatus}" FontSize="8.5" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource AccentBrush}" Margin="7,0,0,0"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding SessionDetail}" FontSize="9.5" Margin="0,6,0,0"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                    <TextBlock Text="Previous and next stay in sync with the Island Media Controls mod."
+                                               FontSize="8.5" Margin="0,5,0,0"
+                                               Foreground="{StaticResource TextTertiaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Empty state -->
+                <Grid Grid.Column="1" Grid.ColumnSpan="2" Panel.ZIndex="20"
+                      Visibility="{Binding ShowEmptyOverlay, Converter={StaticResource BoolToVis}}">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#F207060A" Offset="0" />
+                            <GradientStop Color="#FA07060A" Offset="0.6" />
+                            <GradientStop Color="#F207060A" Offset="1" />
+                        </LinearGradientBrush>
+                    </Grid.Background>
+
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                MaxWidth="440" Margin="0,-20,0,0">
+                        <Border Width="72" Height="72" CornerRadius="36" Background="#0F0B14"
+                                BorderBrush="{StaticResource GoldBrush}" BorderThickness="1.4"
+                                HorizontalAlignment="Center">
+                            <TextBlock Text="V" FontFamily="{StaticResource SerifFont}" FontSize="38"
+                                       Foreground="{StaticResource GoldBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="{Binding EmptyTitle}" FontFamily="{StaticResource SerifFont}"
+                                   FontSize="36" HorizontalAlignment="Center" Margin="0,22,0,0"
+                                   TextAlignment="Center" />
+                        <TextBlock Text="{Binding EmptyText}" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,0"
+                                   LineHeight="18" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
+                            <Button Style="{StaticResource PillButtonStyle}" Height="38" Padding="18,0"
+                                    Content="Choose music folder" Click="ChooseFolder_Click" />
+                            <Button Style="{StaticResource GhostButtonStyle}" Height="38" Content="Rescan"
+                                    Click="Rescan_Click" Margin="8,0,0,0" />
+                        </StackPanel>
+                        <TextBlock Text="Tip · Drop music into this folder any time — Velvet picks it up automatically."
+                                   FontSize="9.5" Foreground="{StaticResource TextTertiaryBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" Margin="0,22,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- Toast -->
+        <Border x:Name="ToastBorder" Panel.ZIndex="50" HorizontalAlignment="Center"
+                VerticalAlignment="Bottom" Margin="0,0,0,26" MaxWidth="460"
+                Background="#F515121D" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
+                CornerRadius="14" Padding="18,12" Opacity="0" Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock x:Name="ToastTitleText" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock x:Name="ToastMessageText" FontSize="10.5" Margin="0,4,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

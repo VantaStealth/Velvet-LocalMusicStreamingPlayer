@@ -1,0 +1,299 @@
+<Window x:Class="Velvet.Desktop.IslandWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:Velvet.Desktop.Controls"
+        xmlns:conv="clr-namespace:Velvet.Desktop.Converters"
+        Title="Velvet Island" Width="372" Height="82" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
+        ShowActivated="False" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        FontFamily="{StaticResource SansFont}" Foreground="{StaticResource TextPrimaryBrush}">
+
+    <Window.Resources>
+        <conv:CoverImageConverter x:Key="CoverImage" />
+        <LinearGradientBrush x:Key="IslandFill" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#FC100C1C" Offset="0" />
+            <GradientStop Color="#FB080611" Offset="0.55" />
+            <GradientStop Color="#FC0B0712" Offset="1" />
+        </LinearGradientBrush>
+        <SolidColorBrush x:Key="IslandMinimalFill" Color="#F5040307" />
+        <SolidColorBrush x:Key="IslandMinimalBorder" Color="#24FFFFFF" />
+
+        <Style x:Key="IslandIconButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="11">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#1CFFFFFF" />
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#2AFFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="IslandRoundButton" TargetType="Button" BasedOn="{StaticResource IslandIconButton}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Ellipse Fill="{DynamicResource AccentGradient}" />
+                            <Ellipse x:Name="Halo" Fill="Transparent" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Halo" Property="Fill" Value="#33000000" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="IslandGrip" TargetType="Thumb">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Cursor" Value="SizeNWSE" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid Background="Transparent">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <Ellipse Width="2" Height="2" Fill="#59FFFFFF" Margin="0,0,2,0" />
+                                <Ellipse Width="2" Height="2" Fill="#59FFFFFF" Margin="0,0,2,0" />
+                                <Ellipse Width="2" Height="2" Fill="#59FFFFFF" />
+                            </StackPanel>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="Card" CornerRadius="34" BorderThickness="1"
+            BorderBrush="{DynamicResource AccentSoftBrush}"
+            Background="{StaticResource IslandFill}"
+            Cursor="SizeAll" MouseLeftButtonDown="Card_MouseLeftButtonDown"
+            MouseEnter="Card_MouseEnter" MouseLeave="Card_MouseLeave">
+        <Grid x:Name="CardScene" SizeChanged="CardScene_SizeChanged">
+
+            <Grid x:Name="Ornaments" IsHitTestVisible="False">
+                <Border x:Name="Veil" CornerRadius="34" Background="{DynamicResource IslandVeinBrush}" />
+                <Rectangle x:Name="Gloss">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1" Opacity="0.35">
+                            <GradientStop Color="#00FFFFFF" Offset="0.36" />
+                            <GradientStop Color="#10FFFFFF" Offset="0.49" />
+                            <GradientStop Color="#00FFFFFF" Offset="0.62" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Rectangle>
+                    <Rectangle.Fill>
+                        <SolidColorBrush Color="{DynamicResource AccentColor}" Opacity="0.05" />
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Ellipse>
+                    <Ellipse.Fill>
+                        <RadialGradientBrush GradientOrigin="0.18,0.5" Center="0.18,0.5" Opacity="0.34">
+                            <GradientStop Color="{Binding GlowColor}" Offset="0" />
+                            <GradientStop Color="Transparent" Offset="1" />
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+            </Grid>
+
+            <Border x:Name="Hairline" Height="1" VerticalAlignment="Top" Margin="32,0" IsHitTestVisible="False">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#00FFFFFF" Offset="0" />
+                        <GradientStop Color="#38FFFFFF" Offset="0.5" />
+                        <GradientStop Color="#00FFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <Border x:Name="InnerEdge" CornerRadius="33" BorderThickness="1" Margin="1"
+                    BorderBrush="#16FFFFFF" IsHitTestVisible="False" />
+
+            <Grid x:Name="LayoutHost" Width="356" Height="82"
+                  HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid.LayoutTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="IslandScale" />
+                        <RotateTransform x:Name="IslandRotation" />
+                    </TransformGroup>
+                </Grid.LayoutTransform>
+
+                <Grid x:Name="ExpandedContent" Height="82" VerticalAlignment="Top">
+                    <Grid Margin="13,9,11,9">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="64" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Width="64" Height="64" VerticalAlignment="Center">
+                            <Ellipse Fill="{Binding GlowBrush}" IsHitTestVisible="False" />
+                            <controls:SpectrumVisualizer x:Name="MiniSpectrum" Width="76" Height="76"
+                                                         Bands="30" InnerFraction="0.42" LengthFraction="0.065"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                         IsHitTestVisible="False"
+                                                         Sensitivity="{Binding Sensitivity}"
+                                                         AccentBrush="{DynamicResource AccentBrush}"
+                                                         BrightBrush="{DynamicResource AccentBrightBrush}" />
+                            <Border Width="44" Height="44" CornerRadius="13" BorderBrush="#3DFFFFFF"
+                                    BorderThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border.Background>
+                                    <ImageBrush ImageSource="{Binding CoverPath, Converter={StaticResource CoverImage}}"
+                                                Stretch="UniformToFill" />
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+
+                        <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding TitleText}" FontFamily="{StaticResource SerifFont}"
+                                       FontSize="14.5" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding ArtistText}" FontSize="9" Margin="0,1,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <ProgressBar Style="{StaticResource SlimProgressStyle}" Margin="0,7,0,0"
+                                         Minimum="0" Maximum="1" Height="3"
+                                         Value="{Binding ProgressValue, Mode=OneWay}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IslandIconButton}" Click="Previous_Click"
+                                    ToolTip="Previous" AutomationProperties.Name="Island previous">
+                                <TextBlock Text="&#xE892;" FontFamily="{StaticResource IconFont}" FontSize="11" />
+                            </Button>
+                            <Button Style="{StaticResource IslandRoundButton}" Click="PlayPause_Click"
+                                    Margin="4,0" ToolTip="Play or pause" AutomationProperties.Name="Island play">
+                                <TextBlock Text="{Binding PlayGlyph}" FontFamily="{StaticResource IconFont}"
+                                           FontSize="11" Foreground="#0B0810" />
+                            </Button>
+                            <Button Style="{StaticResource IslandIconButton}" Click="Next_Click"
+                                    ToolTip="Next" AutomationProperties.Name="Island next">
+                                <TextBlock Text="&#xE893;" FontFamily="{StaticResource IconFont}" FontSize="11" />
+                            </Button>
+                            <Button Style="{StaticResource IslandIconButton}" Click="Settings_Click"
+                                    Margin="2,0,0,0" ToolTip="Island settings"
+                                    AutomationProperties.Name="Island settings">
+                                <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}" FontSize="10" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <Grid x:Name="MinimalContent" Visibility="Collapsed" Background="Transparent"
+                      Height="30" VerticalAlignment="Top"
+                      ToolTip="Double-click to expand">
+                    <Grid Margin="9,0,8,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Width="16" Height="16" CornerRadius="5" VerticalAlignment="Center"
+                                BorderBrush="#33FFFFFF" BorderThickness="1">
+                            <Border.Background>
+                                <ImageBrush ImageSource="{Binding CoverPath, Converter={StaticResource CoverImage}}"
+                                            Stretch="UniformToFill" />
+                            </Border.Background>
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="{Binding TitleText}" FontSize="10" Margin="7,0,8,0"
+                                   VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="2" Text="{Binding TimeText}" FontSize="8.5" VerticalAlignment="Center"
+                                   Margin="0,0,7,0" Foreground="{StaticResource TextTertiaryBrush}" />
+                        <Button Grid.Column="3" Style="{StaticResource IslandIconButton}" Click="Previous_Click"
+                                Width="20" Height="20" ToolTip="Previous" AutomationProperties.Name="Island previous">
+                            <TextBlock Text="&#xE892;" FontFamily="{StaticResource IconFont}" FontSize="10" />
+                        </Button>
+                        <Button Grid.Column="4" Style="{StaticResource IslandIconButton}" Click="PlayPause_Click"
+                                Width="24" Height="24" Margin="1,0" ToolTip="Play or pause"
+                                AutomationProperties.Name="Island play">
+                            <TextBlock Text="{Binding PlayGlyph}" FontFamily="{StaticResource IconFont}"
+                                       FontSize="12" Foreground="{DynamicResource AccentBrightBrush}" />
+                        </Button>
+                        <Button Grid.Column="5" Style="{StaticResource IslandIconButton}" Click="Next_Click"
+                                Width="20" Height="20" ToolTip="Next" AutomationProperties.Name="Island next">
+                            <TextBlock Text="&#xE893;" FontFamily="{StaticResource IconFont}" FontSize="10" />
+                        </Button>
+                    </Grid>
+                </Grid>
+
+                <Grid x:Name="SettingsPanel" Margin="18,92,16,0" VerticalAlignment="Top"
+                      Visibility="Collapsed">
+                    <Border Background="#12FFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1"
+                            CornerRadius="13" Padding="10,8" Cursor="Hand"
+                            PreviewMouseLeftButtonDown="Opacity_PreviewMouseLeftButtonDown"
+                            PreviewMouseMove="Opacity_PreviewMouseMove"
+                            PreviewMouseLeftButtonUp="Opacity_PreviewMouseLeftButtonUp"
+                            LostMouseCapture="Opacity_LostMouseCapture">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <Grid Margin="0,0,0,1">
+                                    <TextBlock Text="OPACITY" FontSize="7.5" FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextTertiaryBrush}" />
+                                    <TextBlock Text="{Binding OpacityValue, StringFormat={}{0:P0}}" FontSize="8"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource AccentBrightBrush}" />
+                                </Grid>
+                                <Slider x:Name="OpacitySlider" Style="{StaticResource VelvetSliderStyle}"
+                                        Minimum="0.35" Maximum="1" Value="{Binding OpacityValue, Mode=OneWay}"
+                                        Cursor="Hand" AutomationProperties.Name="Island opacity"
+                                        IsHitTestVisible="False" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                        Margin="14,0,0,0">
+                                <Button Style="{StaticResource IslandIconButton}" Click="Minify_Click"
+                                        ToolTip="Minimal mode" AutomationProperties.Name="Island minimal">
+                                    <TextBlock Text="&#xE73F;" FontFamily="{StaticResource IconFont}" FontSize="10" />
+                                </Button>
+                                <Button Style="{StaticResource IslandIconButton}" Click="Rotate_Click"
+                                        ToolTip="Rotate island" AutomationProperties.Name="Island rotate">
+                                    <TextBlock Text="&#xE7AD;" FontFamily="{StaticResource IconFont}" FontSize="10" />
+                                </Button>
+                                <Button Style="{StaticResource IslandIconButton}" Click="Close_Click"
+                                        ToolTip="Close island" AutomationProperties.Name="Island close">
+                                    <TextBlock Text="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="9" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <Thumb x:Name="Grip" Style="{StaticResource IslandGrip}" HorizontalAlignment="Right"
+                   VerticalAlignment="Bottom" Margin="0,0,6,6" DragDelta="Grip_DragDelta"
+                   DragCompleted="Grip_DragCompleted" ToolTip="Drag to resize"
+                   AutomationProperties.Name="Resize island" />
+        </Grid>
+    </Border>
+</Window>
