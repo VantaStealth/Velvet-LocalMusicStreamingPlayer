@@ -1,22 +1,25 @@
 {
   "name": "Velvet Cloud",
-  "version": 3,
+  "version": 4,
   "updated": "2026-11-02",
   "tracks": [
     {
       "name": "Abbos Dance.mp3",
       "size": 6820055,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Abbos.Dance.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Abbos.Dance.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Abbos.Dance.lrc"
     },
     {
       "name": "Ainsi Ba La Vida.mp3",
       "size": 6778992,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Ainsi.Ba.La.Vida.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Ainsi.Ba.La.Vida.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Ainsi.Ba.La.Vida.lrc"
     },
     {
       "name": "APT.mp3",
       "size": 5400851,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/APT.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/APT.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/APT.lrc"
     },
     {
       "name": "Bella Ciao.mp3",
@@ -26,132 +29,158 @@
     {
       "name": "Belly Dancer.mp3",
       "size": 6808499,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Belly.Dancer.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Belly.Dancer.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Belly.Dancer.lrc"
     },
     {
       "name": "Billie Jean.mp3",
       "size": 10146372,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Billie.Jean.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Billie.Jean.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Billie.Jean.lrc"
     },
     {
       "name": "Cheri Cheri Lady.mp3",
       "size": 7545375,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Cheri.Cheri.Lady.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Cheri.Cheri.Lady.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Cheri.Cheri.Lady.lrc"
     },
     {
       "name": "Darnir Danse.mp3",
       "size": 6481774,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Darnir.Danse.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Darnir.Danse.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Darnir.Danse.lrc"
     },
     {
       "name": "Dracula.mp3",
       "size": 7534560,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Dracula.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Dracula.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Dracula.lrc"
     },
     {
       "name": "Dua Lipa - Training Season (Official Music Video) [ZjBZ8MUnB0E].mp3",
       "size": 7689218,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Dua.Lipa.-.Training.Season.Official.Music.Video.ZjBZ8MUnB0E.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Dua.Lipa.-.Training.Season.Official.Music.Video.ZjBZ8MUnB0E.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Dua.Lipa.-.Training.Season.Official.Music.Video.ZjBZ8MUnB0E.lrc"
     },
     {
       "name": "Happy Nation.mp3",
       "size": 7057061,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Happy.Nation.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Happy.Nation.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Happy.Nation.lrc"
     },
     {
       "name": "Headlights.mp3",
       "size": 5235929,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Headlights.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Headlights.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Headlights.lrc"
     },
     {
       "name": "HEAVENLY JUMPSTYLE.mp3",
       "size": 3665657,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/HEAVENLY.JUMPSTYLE.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/HEAVENLY.JUMPSTYLE.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/HEAVENLY.JUMPSTYLE.lrc"
     },
     {
       "name": "House of Memories.mp3",
       "size": 6666122,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/House.of.Memories.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/House.of.Memories.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/House.of.Memories.lrc"
     },
     {
       "name": "Hymn for the weekend.mp3",
       "size": 7898023,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Hymn.for.the.weekend.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Hymn.for.the.weekend.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Hymn.for.the.weekend.lrc"
     },
     {
       "name": "Industry Baby.mp3",
       "size": 7190574,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Industry.Baby.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Industry.Baby.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Industry.Baby.lrc"
     },
     {
       "name": "Macarena.mp3",
       "size": 7854867,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Macarena.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Macarena.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Macarena.lrc"
     },
     {
       "name": "Meant to be.mp3",
       "size": 4626456,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Meant.to.be.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Meant.to.be.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Meant.to.be.lrc"
     },
     {
       "name": "Old Town Road.mp3",
       "size": 5182030,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Old.Town.Road.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Old.Town.Road.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Old.Town.Road.lrc"
     },
     {
       "name": "Pon de Replay.mp3",
       "size": 7671454,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Pon.de.Replay.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Pon.de.Replay.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Pon.de.Replay.lrc"
     },
     {
       "name": "Rampampam.mp3",
       "size": 6384882,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Rampampam.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Rampampam.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Rampampam.lrc"
     },
     {
       "name": "Rasputin.mp3",
       "size": 9037411,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Rasputin.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Rasputin.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Rasputin.lrc"
     },
     {
       "name": "Skyfall.mp3",
       "size": 9401532,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Skyfall.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Skyfall.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Skyfall.lrc"
     },
     {
       "name": "Snowman.mp3",
       "size": 5458736,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Snowman.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Snowman.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Snowman.lrc"
     },
     {
       "name": "Stereo.mp3",
       "size": 7072444,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Stereo.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Stereo.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Stereo.lrc"
     },
     {
       "name": "Training Season.mp3",
       "size": 6606554,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Training.Season.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Training.Season.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Training.Season.lrc"
     },
     {
       "name": "Tug'medona Ihi Ihi.mp3",
       "size": 8183547,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Tug.medona.Ihi.Ihi.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Tug.medona.Ihi.Ihi.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Tug.medona.Ihi.Ihi.lrc"
     },
     {
       "name": "Undress Rehearsal - Timeflies ｜ Audio Edit [mErLiV5Jq8c].mp3",
       "size": 934278,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Undress.Rehearsal.-.Timeflies.Audio.Edit.mErLiV5Jq8c.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Undress.Rehearsal.-.Timeflies.Audio.Edit.mErLiV5Jq8c.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Undress.Rehearsal.-.Timeflies.Audio.Edit.mErLiV5Jq8c.lrc"
     },
     {
       "name": "Wellerman.mp3",
       "size": 4549001,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Wellerman.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Wellerman.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/Wellerman.lrc"
     },
     {
       "name": "Татьяна Куртукова - Одного.mp3",
       "size": 6509377,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/-.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/-.mp3",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/-.lrc"
     }
   ]
 }

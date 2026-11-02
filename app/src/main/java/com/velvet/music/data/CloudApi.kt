@@ -13,7 +13,8 @@ data class CloudEntry(
     val name: String,
     val url: String,
     val sizeBytes: Long,
-    val mirrors: List<String> = emptyList()
+    val mirrors: List<String> = emptyList(),
+    val lyrics: String? = null
 ) {
     val sources: List<String>
         get() = (listOf(url) + mirrors).filter { it.isNotBlank() }
@@ -22,14 +23,14 @@ data class CloudEntry(
 object CloudApi {
 
     const val MANIFEST_URL =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=5"
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=7"
 
     // The same manifest is committed to the repository, so a removed release
     // asset does not strand clients that still have working backup mirrors.
     private val manifestUrls = listOf(
         MANIFEST_URL,
-        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=5",
-        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=5"
+        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=7",
+        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=7"
     )
 
     private var cache: List<CloudEntry> = emptyList()
@@ -69,7 +70,15 @@ object CloudApi {
                                 array.optString(position).takeIf { it.isNotBlank() }
                             }
                         }.orEmpty()
-                        add(CloudEntry(name, url, item.optLong("size", 0L), mirrors))
+                        add(
+                            CloudEntry(
+                                name,
+                                url,
+                                item.optLong("size", 0L),
+                                mirrors,
+                                item.optString("lyrics").takeIf { it.isNotBlank() }
+                            )
+                        )
                     }
                 }
                 cache = entries
@@ -134,6 +143,7 @@ object CloudApi {
                         }
                     }
                     onProgress(1f)
+                    writeLyricsSidecar(context, destination, entry)
                     return@runCatching
                 } catch (exception: Exception) {
                     lastError = exception
@@ -144,6 +154,35 @@ object CloudApi {
             }
 
             throw lastError ?: IllegalStateException("No source is available for ${entry.name}.")
+        }
+    }
+
+    private fun writeLyricsSidecar(
+        context: Context,
+        folder: DocumentFile,
+        entry: CloudEntry
+    ) {
+        val url = entry.lyrics?.takeIf { it.isNotBlank() } ?: return
+        val lyricName = entry.name.substringBeforeLast('.') + ".lrc"
+        runCatching {
+            val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Velvet-Mobile")
+            }
+            try {
+                if (connection.responseCode !in 200..299) return
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                val target = folder.findFile(lyricName)
+                    ?: folder.createFile("text/plain", lyricName)
+                    ?: return
+                context.contentResolver.openOutputStream(target.uri, "wt")?.use { sink ->
+                    sink.write(body.toByteArray())
+                }
+            } finally {
+                connection.disconnect()
+            }
         }
     }
 }

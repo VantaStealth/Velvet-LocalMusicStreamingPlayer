@@ -728,7 +728,6 @@
                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
                                                              Active="{Binding IsPlaying}"
                                                              Sensitivity="{Binding VisualizerSensitivity}"
-                                                             GlowBrush="{Binding CurrentGlowBrush}"
                                                              InnerFraction="0.355" LengthFraction="0.055"
                                                              AccentBrush="{DynamicResource AccentBrush}"
                                                              BrightBrush="{DynamicResource AccentBrightBrush}" />
@@ -736,6 +735,16 @@
                                 <Ellipse Width="210" Height="210"
                                          StrokeThickness="1" StrokeDashArray="1 6"
                                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Opacity" Value="0.16" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPlaying}" Value="False">
+                                                    <Setter Property="Opacity" Value="0" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
                                     <Ellipse.Stroke>
                                         <SolidColorBrush Color="{DynamicResource AccentColor}" Opacity="0.16" />
                                     </Ellipse.Stroke>
@@ -764,6 +773,16 @@
                             </Grid>
 
                             <StackPanel HorizontalAlignment="Center" Margin="0,14,0,0">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPlaying}" Value="False">
+                                                <Setter Property="Opacity" Value="0.16" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
                                 <Grid x:Name="Line1" Width="210" Height="8" Margin="0,4,0,0" Opacity="0.55"
                                       RenderTransformOrigin="0.5,0.5">
                                     <Grid.RenderTransform>
@@ -1118,71 +1137,18 @@
             </Border>
         </Grid>
 
-        <!-- Disco lights: beat-synced colour wash over the room -->
+        <!-- Disco stage: sourced lights, liquid floor, embers and the occasional ship -->
         <Grid x:Name="DiscoStage" IsHitTestVisible="False" Opacity="0">
-            <Ellipse x:Name="DiscoA" Width="560" Height="560" Opacity="0"
-                     HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-150,-220,0,0">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#B06E2BFF" Offset="0" />
-                        <GradientStop Color="#3A6E2BFF" Offset="0.55" />
-                        <GradientStop Color="#006E2BFF" Offset="1" />
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-                <Ellipse.RenderTransform>
-                    <TranslateTransform x:Name="DiscoATransform" />
-                </Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="DiscoB" Width="520" Height="520" Opacity="0"
-                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-190,-130,0">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#A000E5FF" Offset="0" />
-                        <GradientStop Color="#3800E5FF" Offset="0.55" />
-                        <GradientStop Color="#0000E5FF" Offset="1" />
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-                <Ellipse.RenderTransform>
-                    <TranslateTransform x:Name="DiscoBTransform" />
-                </Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="DiscoC" Width="600" Height="600" Opacity="0"
-                     HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,-280">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#A0FF2B8A" Offset="0" />
-                        <GradientStop Color="#38FF2B8A" Offset="0.55" />
-                        <GradientStop Color="#00FF2B8A" Offset="1" />
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-                <Ellipse.RenderTransform>
-                    <TranslateTransform x:Name="DiscoCTransform" />
-                </Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="DiscoD" Width="420" Height="420" Opacity="0"
-                     HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="120,0,0,40">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#90FFC44D" Offset="0" />
-                        <GradientStop Color="#30FFC44D" Offset="0.55" />
-                        <GradientStop Color="#00FFC44D" Offset="1" />
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-                <Ellipse.RenderTransform>
-                    <TranslateTransform x:Name="DiscoDTransform" />
-                </Ellipse.RenderTransform>
-            </Ellipse>
-            <Rectangle x:Name="DiscoFlash" Opacity="0">
-                <Rectangle.Fill>
-                    <SolidColorBrush x:Name="DiscoFlashBrush" Color="#FFB026FF" />
-                </Rectangle.Fill>
-            </Rectangle>
+            <controls:DiscoOverlay x:Name="Disco" Active="False" />
 
             <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                        Margin="0,0,0,44" MaxWidth="900" IsHitTestVisible="False">
+                        Margin="0,0,0,96" MaxWidth="900" IsHitTestVisible="False">
                 <TextBlock x:Name="DiscoLyricText" Text="" TextAlignment="Center"
                            TextWrapping="Wrap" FontFamily="{StaticResource SerifFont}"
-                           FontSize="25" Foreground="#F7F2FB" LineHeight="34">
+                           FontSize="27" Foreground="#FBF7FF" LineHeight="36">
+                    <TextBlock.RenderTransform>
+                        <TranslateTransform x:Name="DiscoLyricTransform" />
+                    </TextBlock.RenderTransform>
                     <TextBlock.Effect>
                         <DropShadowEffect Color="#FF000000" BlurRadius="22" ShadowDepth="0" Opacity="0.85" />
                     </TextBlock.Effect>

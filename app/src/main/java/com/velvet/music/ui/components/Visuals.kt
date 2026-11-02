@@ -17,15 +17,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -109,10 +112,19 @@ fun DiscoLights(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(12000, easing = LinearEasing),
+            animation = tween(11000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "discoDrift"
+    )
+    val shipDrift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(43000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "discoShip"
     )
     val colors = listOf(
         Color(0xFFB026FF),
@@ -122,54 +134,264 @@ fun DiscoLights(
     )
     val level = if (playing) bass.coerceIn(0f, 1f) else 0f
     val spin = (drift * 2f * PI).toFloat()
+    val baseColor = (drift * 8f).toInt() % colors.size
 
     Canvas(modifier) {
         if (size.width <= 0f || size.height <= 0f) return@Canvas
-        val flash = colors[((drift * 8f).toInt()) % colors.size]
-        drawRect(flash.copy(alpha = 0.025f + level * 0.10f))
+        val width = size.width
+        val height = size.height
+        val energy = 0.55f + level * 0.45f
+        val shake = level * 3.dp.toPx()
+        val color = { offset: Int -> colors[(baseColor + offset) % colors.size] }
 
-        val spots = listOf(
-            Offset(
-                size.width * (0.18f + 0.30f * sin(spin).toFloat()),
-                size.height * (0.16f + 0.22f * cos(spin * 0.8f).toFloat())
-            ),
-            Offset(
-                size.width * (0.82f + 0.28f * cos(spin * 0.7f).toFloat()),
-                size.height * (0.20f + 0.20f * sin(spin * 0.9f).toFloat())
-            ),
-            Offset(
-                size.width * (0.50f + 0.34f * sin(spin * 0.5f + 1.3f).toFloat()),
-                size.height * (0.78f + 0.16f * cos(spin * 0.8f).toFloat())
-            )
-        )
-        spots.forEachIndexed { index, center ->
-            val radius = size.width * (0.34f + 0.05f * sin(spin * 0.6f + index).toFloat())
+        // Border and corner lights: every glow has a visible source.
+        val cornerRadius = width * (0.30f + level * 0.06f)
+        listOf(
+            Offset.Zero,
+            Offset(width, 0f),
+            Offset(width, height),
+            Offset(0f, height)
+        ).forEachIndexed { index, corner ->
+            val tint = color(index)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        colors[index % colors.size].copy(alpha = 0.16f + level * 0.24f),
+                        tint.copy(alpha = 0.17f * energy),
+                        tint.copy(alpha = 0.05f * energy),
                         Color.Transparent
                     ),
-                    center = center,
-                    radius = radius
+                    center = corner,
+                    radius = cornerRadius
                 ),
-                radius = radius,
-                center = center
+                radius = cornerRadius,
+                center = corner
             )
         }
 
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    colors[(indexColor(drift) + 2) % colors.size].copy(alpha = 0.04f + level * 0.10f)
+        val edgeAlpha = 0.35f + level * 0.45f
+        val edgeBrush = Brush.horizontalGradient(
+            listOf(Color.Transparent, color(0).copy(alpha = edgeAlpha), Color.Transparent)
+        )
+        drawLine(edgeBrush, Offset(0f, 1.dp.toPx()), Offset(width, 1.dp.toPx()), 2.dp.toPx())
+        drawLine(edgeBrush, Offset(0f, height - 1.dp.toPx()), Offset(width, height - 1.dp.toPx()), 2.dp.toPx())
+        val sideBrush = Brush.verticalGradient(
+            listOf(Color.Transparent, color(2).copy(alpha = edgeAlpha), Color.Transparent)
+        )
+        drawLine(sideBrush, Offset(1.dp.toPx(), 0f), Offset(1.dp.toPx(), height), 2.dp.toPx())
+        drawLine(sideBrush, Offset(width - 1.dp.toPx(), 0f), Offset(width - 1.dp.toPx(), height), 2.dp.toPx())
+
+        // Two sweeping spotlights, each with its own lamp and floor pool.
+        val pools = mutableListOf<Offset>()
+        listOf(
+            Offset(width * 0.04f, -height * 0.02f),
+            Offset(width * 0.96f, -height * 0.02f)
+        ).forEachIndexed { index, origin ->
+            val sway = sin(spin * (0.55f + index * 0.12f) + index * 2.1f) * 0.30f
+            val angle = if (index == 0) 0.52f + sway else -0.52f + sway
+            val jitter = sin(spin * 34f + index) * shake
+            val lamp = Offset(origin.x + jitter, origin.y)
+            val end = Offset(
+                lamp.x + sin(angle) * height * 1.02f,
+                lamp.y + cos(angle) * height * 1.02f
+            )
+            val half = height * (0.065f + level * 0.018f)
+            val dx = end.x - lamp.x
+            val dy = end.y - lamp.y
+            val length = kotlin.math.hypot(dx, dy).coerceAtLeast(1f)
+            val px = -dy / length * half
+            val py = dx / length * half
+            val tint = color(index * 2)
+            val cone = Path().apply {
+                moveTo(lamp.x, lamp.y)
+                lineTo(end.x + px, end.y + py)
+                lineTo(end.x - px, end.y - py)
+                close()
+            }
+            drawPath(
+                path = cone,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        tint.copy(alpha = 0.24f * energy),
+                        tint.copy(alpha = 0.07f * energy),
+                        Color.Transparent
+                    ),
+                    start = lamp,
+                    end = end
                 )
             )
-        )
+            val pool = Offset(
+                end.x + sin(spin * 1.7f + index) * shake,
+                end.y
+            )
+            pools += pool
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        tint.copy(alpha = 0.22f * energy),
+                        Color.Transparent
+                    ),
+                    center = pool,
+                    radius = height * 0.16f
+                ),
+                radius = height * 0.16f,
+                center = pool
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.85f),
+                        tint.copy(alpha = 0.55f),
+                        Color.Transparent
+                    ),
+                    center = lamp,
+                    radius = 16.dp.toPx()
+                ),
+                radius = 16.dp.toPx(),
+                center = lamp
+            )
+            drawCircle(Color.White.copy(alpha = 0.9f), 2.4.dp.toPx(), lamp)
+        }
+
+        // Flowing theme liquid along the floor.
+        for (layer in 0..2) {
+            val floor = height * (0.90f + layer * 0.014f)
+            val amplitude = (8 + layer * 5).dp.toPx() + level * 10.dp.toPx()
+            val wave = Path().apply {
+                moveTo(0f, height)
+                var x = 0f
+                while (x <= width + 2f) {
+                    val y = floor +
+                        sin(x / width * 7.4f + spin * (1.1f + layer * 0.3f) + layer) * amplitude +
+                        sin(x / width * 21f - spin * 0.8f) * 3.dp.toPx()
+                    lineTo(x, y)
+                    x += width / 26f
+                }
+                lineTo(width, height)
+                close()
+            }
+            drawPath(
+                path = wave,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        color(layer).copy(alpha = 0.20f + level * 0.10f),
+                        Color.Transparent
+                    ),
+                    startY = floor - height * 0.06f,
+                    endY = height
+                )
+            )
+        }
+
+        // Beat bursts: local shockwaves and sparks, never a full-screen wash.
+        if (level > 0.28f) {
+            pools.forEachIndexed { index, pool ->
+                for (ring in 0 until 3) {
+                    val progress = ((drift * 5.5f + ring / 3f + index * 0.25f) % 1f)
+                    val fade = (1f - progress) * (0.18f + level * 0.42f)
+                    drawCircle(
+                        color = color(index * 2).copy(alpha = fade),
+                        radius = height * (0.03f + progress * 0.20f),
+                        center = pool,
+                        style = Stroke(width = 1.2f + level * 2.4f)
+                    )
+                }
+                for (spark in 0 until 14) {
+                    val progress = ((drift * 6f + spark / 14f) % 1f)
+                    val angle = spark / 14f * 2f * PI.toFloat() + spin
+                    val radius = progress * height * 0.19f
+                    drawCircle(
+                        color = color(index + 1).copy(alpha = (1f - progress) * level * 0.55f),
+                        radius = (1f + (spark % 3)) * 0.9.dp.toPx(),
+                        center = Offset(
+                            pool.x + cos(angle) * radius,
+                            pool.y + sin(angle) * radius * 0.7f
+                        )
+                    )
+                }
+            }
+        }
+
+        // Embers drifting up from the floor.
+        for (index in 0 until 48) {
+            val progress = (drift * (1.6f + (index % 4) * 0.22f) + index / 48f) % 1f
+            val x = width * ((index * 0.618f) % 1f) + sin(spin + index) * 9.dp.toPx()
+            val y = height * (0.94f - progress * 0.58f)
+            val alpha = sin(progress * PI.toFloat()) * (0.16f + level * 0.42f)
+            drawCircle(
+                color = color(index).copy(alpha = alpha.coerceIn(0f, 0.7f)),
+                radius = (0.7f + (index % 3) * 0.7f).dp.toPx(),
+                center = Offset(x, y)
+            )
+        }
+
+        // A pirate ship crosses the lower third occasionally.
+        if (shipDrift in 0.86f..0.985f) {
+            val progress = (shipDrift - 0.86f) / 0.125f
+            val shipX = width * (-0.22f + progress * 1.44f)
+            val shipY = height * 0.74f + sin(spin * 1.4f) * 4.dp.toPx()
+            val shipScale = (height / 620f).coerceAtLeast(0.5f)
+            val rim = color(3).copy(alpha = 0.7f)
+            withTransform({
+                translate(left = shipX, top = shipY)
+                scale(scaleX = shipScale, scaleY = shipScale, pivot = Offset.Zero)
+            }) {
+                drawOval(
+                    color = color(3).copy(alpha = 0.10f),
+                    topLeft = Offset(-92f, 28f),
+                    size = Size(184f, 16f)
+                )
+                val hull = Path().apply {
+                    moveTo(-94f, -6f)
+                    lineTo(-66f, 24f)
+                    lineTo(58f, 24f)
+                    lineTo(98f, -6f)
+                    lineTo(70f, -12f)
+                    lineTo(-72f, -12f)
+                    close()
+                }
+                drawPath(hull, Color(0xF2080510))
+                drawPath(hull, rim, style = Stroke(width = 1.4f))
+                drawLine(rim, Offset(-36f, -12f), Offset(-36f, -88f), 1.4f)
+                drawLine(rim, Offset(6f, -12f), Offset(6f, -98f), 1.4f)
+                drawLine(rim, Offset(44f, -12f), Offset(44f, -74f), 1.4f)
+                val sailA = Path().apply {
+                    moveTo(-32f, -84f)
+                    lineTo(-32f, -26f)
+                    quadraticBezierTo(-70f, -40f, -64f, -66f)
+                    close()
+                }
+                drawPath(sailA, Color(0xE0120A1C))
+                drawPath(sailA, rim.copy(alpha = 0.35f), style = Stroke(width = 1f))
+                val sailB = Path().apply {
+                    moveTo(10f, -94f)
+                    lineTo(10f, -24f)
+                    quadraticBezierTo(48f, -36f, 42f, -74f)
+                    close()
+                }
+                drawPath(sailB, Color(0xD80C0712))
+                drawPath(sailB, rim.copy(alpha = 0.35f), style = Stroke(width = 1f))
+                val jib = Path().apply {
+                    moveTo(48f, -70f)
+                    lineTo(48f, -22f)
+                    quadraticBezierTo(76f, -32f, 66f, -56f)
+                    close()
+                }
+                drawPath(jib, Color(0xE0120A1C))
+                drawPath(jib, rim.copy(alpha = 0.35f), style = Stroke(width = 1f))
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFFE3B0), Color.Transparent),
+                        center = Offset(70f, -8f),
+                        radius = 16f
+                    ),
+                    radius = 16f,
+                    center = Offset(70f, -8f)
+                )
+                drawCircle(Color.White, 2.2f, Offset(70f, -8f))
+            }
+        }
     }
 }
-
-private fun indexColor(drift: Float): Int = ((drift * 8f).toInt()) % 4
 
 @Composable
 fun FilmGrain(modifier: Modifier = Modifier, alpha: Float = 0.045f) {

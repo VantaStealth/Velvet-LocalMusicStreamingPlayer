@@ -19,6 +19,7 @@ import android.view.animation.LinearInterpolator
 import com.velvet.music.data.Prefs
 import java.util.Random
 import kotlin.math.PI
+import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -67,6 +68,14 @@ class VolumeOverlayView(context: Context) : View(context) {
     private var draggingIndex = -1
     private var animator: ValueAnimator? = null
     private var phase = 0f
+
+    // The system stream only accepts whole steps, but the surface does not have
+    // to look stepped: these targets chase the real value every frame.
+    private var displayFraction = 0f
+    private var displayAppVolume = 1f
+    private val displayStreams = FloatArray(velvetStreams.size)
+    private var primed = false
+    private var lastFrameNanos = 0L
 
     private val mixRect = RectF()
     private val railRect = RectF()
@@ -125,6 +134,19 @@ class VolumeOverlayView(context: Context) : View(context) {
                 interpolator = LinearInterpolator()
                 addUpdateListener {
                     phase = it.animatedValue as Float
+                    val now = System.nanoTime()
+                    val dt = if (lastFrameNanos == 0L) 0.016f
+                    else ((now - lastFrameNanos) / 1_000_000_000.0).toFloat()
+                        .coerceIn(0.004f, 0.05f)
+                    lastFrameNanos = now
+                    val ease = 1f - exp(-dt * 15f)
+                    displayFraction += (fraction - displayFraction) * ease
+                    displayAppVolume += (appVolume - displayAppVolume) * ease
+                    for (index in displayStreams.indices) {
+                        val target = streamValues[index].toFloat() /
+                            streamMax[index].coerceAtLeast(1)
+                        displayStreams[index] += (target - displayStreams[index]) * ease
+                    }
                     invalidate()
                 }
                 start()
@@ -151,6 +173,15 @@ class VolumeOverlayView(context: Context) : View(context) {
         muted = runCatching { manager.isStreamMute(AudioManager.STREAM_MUSIC) }
             .getOrDefault(false)
         appVolume = prefs.appVolume.coerceIn(0f, 1.5f)
+        if (!primed) {
+            displayFraction = fraction
+            displayAppVolume = appVolume
+            for (index in displayStreams.indices) {
+                displayStreams[index] = streamValues[index].toFloat() /
+                    streamMax[index].coerceAtLeast(1)
+            }
+            primed = true
+        }
         invalidate()
     }
 
@@ -255,11 +286,14 @@ class VolumeOverlayView(context: Context) : View(context) {
     private fun applyStream(index: Int, level: Float) {
         val manager = audioManager ?: return
         val max = streamMax[index].coerceAtLeast(1)
-        val value = (level * max).roundToInt()
+        val value = (level * max).roundToInt().coerceIn(0, max)
         runCatching { manager.setStreamVolume(velvetStreams[index].stream, value, 0) }
         streamValues[index] = value
+        // Keep the continuous finger position; the OS rounds to its own step
+        // underneath while the visible level keeps tracking the touch.
+        displayStreams[index] = level
         if (index == 0) {
-            fraction = value.toFloat() / max
+            fraction = level
             muted = false
         }
         invalidate()
@@ -282,7 +316,7 @@ class VolumeOverlayView(context: Context) : View(context) {
         val orb = RectF(cx - dp(24f), card.top + dp(26f), cx + dp(24f), card.top + dp(88f))
         drawOrb(canvas, orb, dp(24f))
 
-        val percent = (fraction * 100f).roundToInt()
+        val percent = (displayFraction * 100f).roundToInt()
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = sansBold
         textPaint.letterSpacing = 0f
@@ -326,7 +360,7 @@ class VolumeOverlayView(context: Context) : View(context) {
             canvas.drawLine(cx - dp(6f), ty, cx + dp(6f), ty, tickPaint)
         }
 
-        val level = if (muted) 0f else fraction
+        val level = if (muted) 0f else if (draggingMusic) fraction else displayFraction
         val knobY = railBottom - (railBottom - railTop) * level
         if (level > 0.004f) {
             val fillRect = RectF(cx - dp(11.5f), knobY, cx + dp(11.5f), railBottom)
@@ -408,7 +442,7 @@ class VolumeOverlayView(context: Context) : View(context) {
         bodyPaint.textAlign = Paint.Align.LEFT
         bodyPaint.typeface = sans
         bodyPaint.textSize = dp(11f)
-        bodyPaint.color = 0x9FA69DB2.toInt()
+        bodyPaint.color = 0xC8A69DB2.toInt()
         canvas.drawText("Music and podcasts", orb.right + dp(16f), card.top + dp(92f), bodyPaint)
 
         textPaint.textAlign = Paint.Align.RIGHT
@@ -416,7 +450,7 @@ class VolumeOverlayView(context: Context) : View(context) {
         textPaint.textSize = dp(24f)
         textPaint.color = bright.withAlpha(240)
         canvas.drawText(
-            if (muted) "MUTE" else "${(fraction * 100f).roundToInt()}",
+            if (muted) "MUTE" else "${(displayFraction * 100f).roundToInt()}",
             card.right - dp(20f), card.top + dp(78f), textPaint
         )
         textPaint.textAlign = Paint.Align.LEFT
@@ -442,17 +476,18 @@ class VolumeOverlayView(context: Context) : View(context) {
         textPaint.textSize = dp(13f)
         textPaint.color = 0xFFF6F3FA.toInt()
         canvas.drawText("Velvet channel", card.left + dp(36f), channelTop, textPaint)
+        val channelLevel = if (draggingKind == KIND_APP) appVolume else displayAppVolume
         textPaint.textAlign = Paint.Align.RIGHT
         textPaint.textSize = dp(11f)
         textPaint.color = bright.withAlpha(230)
         canvas.drawText(
-            "${(appVolume * 100f).roundToInt()}%",
+            "${(channelLevel * 100f).roundToInt()}%",
             card.right - dp(20f), channelTop, textPaint
         )
         textPaint.textAlign = Paint.Align.LEFT
 
         bodyPaint.textSize = dp(10.5f)
-        bodyPaint.color = 0x8FA69DB2.toInt()
+        bodyPaint.color = 0xBCA69DB2.toInt()
         canvas.drawText(
             "Trims or boosts only Velvet, independent of the",
             card.left + dp(20f), channelTop + dp(18f), bodyPaint
@@ -465,11 +500,11 @@ class VolumeOverlayView(context: Context) : View(context) {
         val channelY = channelTop + dp(55f)
         val trackLeft = card.left + dp(20f)
         val trackRight = card.right - dp(20f)
-        drawSlider(canvas, trackLeft, trackRight, channelY, appVolume)
+        drawSlider(canvas, trackLeft, trackRight, channelY, channelLevel)
         sliderHits += sliderHit(KIND_APP, 0, trackLeft, trackRight, channelY)
 
         bodyPaint.textSize = dp(10f)
-        bodyPaint.color = 0x766F677B
+        bodyPaint.color = 0xA86F677B.toInt()
         canvas.drawText(
             "Slide past 100% to push Velvet above a game",
             card.left + dp(20f), channelY + dp(30f), bodyPaint
@@ -494,7 +529,7 @@ class VolumeOverlayView(context: Context) : View(context) {
         val left = card.left + dp(20f)
         val right = card.right - dp(20f)
         val active = index == 0
-        val value = streamValues[index].toFloat() / streamMax[index]
+        val value = displayStreams.getOrElse(index) { 0f }
 
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.typeface = sansMedium
@@ -506,7 +541,7 @@ class VolumeOverlayView(context: Context) : View(context) {
         bodyPaint.textAlign = Paint.Align.LEFT
         bodyPaint.typeface = sans
         bodyPaint.textSize = dp(10.5f)
-        bodyPaint.color = 0x8FA69DB2.toInt()
+        bodyPaint.color = 0xBCA69DB2.toInt()
         canvas.drawText(stream.detail, left + labelWidth + dp(9f), top + dp(14f), bodyPaint)
 
         textPaint.textAlign = Paint.Align.RIGHT
@@ -532,9 +567,13 @@ class VolumeOverlayView(context: Context) : View(context) {
         outer.inset(-dp(2.4f), -dp(2.4f))
         canvas.drawRoundRect(outer, radius + dp(2.4f), radius + dp(2.4f), glowPaint)
 
+        // A near-solid base keeps launcher icons and game HUDs from bleeding
+        // through the panel while the liquid and veins keep the surface alive.
+        cardPaint.color = 0xFF100A16.toInt()
+        canvas.drawRoundRect(card, radius, radius, cardPaint)
         cardPaint.shader = LinearGradient(
             card.left, card.top, card.left, card.bottom,
-            intArrayOf(0xCA1A0F1F.toInt(), 0xC80C0810.toInt(), 0xC408060C.toInt()),
+            intArrayOf(0xFA1C1024.toInt(), 0xF90D0812.toInt(), 0xF708060C.toInt()),
             floatArrayOf(0f, 0.55f, 1f),
             Shader.TileMode.CLAMP
         )
@@ -601,7 +640,7 @@ class VolumeOverlayView(context: Context) : View(context) {
     }
 
     private fun drawOrb(canvas: Canvas, orb: RectF, radius: Float) {
-        cardPaint.color = 0xC6150D19.toInt()
+        cardPaint.color = 0xF2150D19.toInt()
         canvas.drawRoundRect(orb, radius, radius, cardPaint)
 
         val level = if (muted) 0f else fraction.coerceIn(0f, 1f)

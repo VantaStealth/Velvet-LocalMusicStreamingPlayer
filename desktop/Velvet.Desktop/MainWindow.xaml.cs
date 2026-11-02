@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -31,6 +33,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly float[] _spectrumBuffer = new float[AudioSpectrum.BandCount];
     private static readonly int[] LineBandStart = { 0, 8, 16, 26, 36 };
     private static readonly int[] LineBandEnd = { 10, 18, 28, 38, AudioSpectrum.BandCount };
+    private static readonly HttpClient LyricsHttp = new() { Timeout = TimeSpan.FromSeconds(9) };
     private ScaleTransform[] _lineScales = Array.Empty<ScaleTransform>();
 
     private readonly DispatcherTimer _ticker;
@@ -46,19 +49,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _visualizerSensitivity = 1.35;
     private double _veinLevel = 0.72;
     private bool _disco;
-    private float _discoPhase;
-    private int _discoColor;
-    private DateTime _lastDiscoColor;
-    private static readonly Color[] DiscoColors =
-    {
-        Color.FromRgb(0xB0, 0x26, 0xFF),
-        Color.FromRgb(0x00, 0xE5, 0xFF),
-        Color.FromRgb(0xFF, 0x2B, 0x8A),
-        Color.FromRgb(0xFF, 0xC4, 0x4D),
-        Color.FromRgb(0xFF, 0x3B, 0x3B)
-    };
     private string _islandButtonText = "Open floating island";
     private List<(TimeSpan At, string Text)> _lyrics = new();
+    private bool _lyricsLoading;
+    private string _lastLyricText = "";
 
     private FileSystemWatcher? _watcher;
     private CancellationTokenSource? _scanCts;
@@ -89,7 +83,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _currentAlbum = "";
     private string? _currentCover;
     private string _currentId = "";
-    private Brush _currentGlowBrush = Brushes.Transparent;
     private bool _hasCurrent;
     private string _playPauseGlyph = "\uE768";
     private bool _isPlaying;
@@ -396,7 +389,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string CurrentAlbum { get => _currentAlbum; private set => Set(ref _currentAlbum, value); }
     public string? CurrentCover { get => _currentCover; private set => Set(ref _currentCover, value); }
     public string CurrentId { get => _currentId; private set => Set(ref _currentId, value); }
-    public Brush CurrentGlowBrush { get => _currentGlowBrush; private set => Set(ref _currentGlowBrush, value); }
     public bool HasCurrent { get => _hasCurrent; private set => Set(ref _hasCurrent, value); }
     public string PlayPauseGlyph { get => _playPauseGlyph; private set => Set(ref _playPauseGlyph, value); }
     public bool IsPlaying { get => _isPlaying; private set => Set(ref _isPlaying, value); }
@@ -519,24 +511,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_lineScales.Length == 0) return;
         var bands = ReadSpectrum();
         var playing = _engine.IsPlaying;
-        var seconds = DateTime.UtcNow.TimeOfDay.TotalSeconds;
 
         for (var index = 0; index < _lineScales.Length; index++)
         {
-            double target;
-            if (playing)
+            var scale = _lineScales[index];
+            if (!playing)
             {
-                var peak = 0f;
-                for (var band = LineBandStart[index]; band < LineBandEnd[index]; band++)
-                    if (bands[band] > peak) peak = bands[band];
-                target = Math.Clamp(0.2 + peak * 0.88, 0.2, 1.0);
-            }
-            else
-            {
-                target = 0.72 + Math.Sin(seconds * 0.85 + index * 0.8) * 0.04;
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                scale.ScaleX = index is 2 ? 0.72 : index is 1 or 3 ? 0.6 : 0.48;
+                continue;
             }
 
-            var scale = _lineScales[index];
+            var peak = 0f;
+            for (var band = LineBandStart[index]; band < LineBandEnd[index]; band++)
+                if (bands[band] > peak) peak = bands[band];
+            var target = Math.Clamp(0.2 + peak * 0.88, 0.2, 1.0);
             scale.BeginAnimation(ScaleTransform.ScaleXProperty,
                 new DoubleAnimation(scale.ScaleX, target, TimeSpan.FromMilliseconds(180))
                 {
@@ -560,16 +549,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var on = _disco && _engine.IsPlaying && IsVisible && WindowState != WindowState.Minimized;
         DiscoStage.Opacity = on ? 1 : 0;
-        if (on)
-        {
-            UpdateLyricLine();
-            return;
-        }
-        DiscoFlash.Opacity = 0;
-        DiscoA.Opacity = 0;
-        DiscoB.Opacity = 0;
-        DiscoC.Opacity = 0;
-        DiscoD.Opacity = 0;
+        Disco.Active = on;
+        if (on) UpdateLyricLine();
     }
 
     private void ToggleIsland()
@@ -787,7 +768,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         CurrentArtist = track.Artist;
         CurrentAlbum = string.IsNullOrWhiteSpace(track.Album) ? "" : track.Album.ToUpperInvariant();
         CurrentCover = track.CoverPath;
-        CurrentGlowBrush = BuildGlow(track.ColorArgb);
         HasCurrent = true;
         SessionStatus = _engine.IsPlaying ? "ISLAND MEDIA CONTROLS · LIVE" : "ISLAND MEDIA CONTROLS · READY";
         SessionDetail = $"{track.Title} — {track.Artist}";
@@ -795,53 +775,236 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdateShuffleState();
         UpdateRepeatState();
         UpdateSeekFromEngine();
-        LoadLyrics(track.Path);
+        LoadLyrics(track);
         PersistSettings();
         _ = RefreshSessionAsync();
     }
 
-    private void LoadLyrics(string path)
+    private void LoadLyrics(Track track)
     {
         _lyrics = new List<(TimeSpan, string)>();
+        _lyricsLoading = false;
         try
         {
-            var lrc = Path.ChangeExtension(path, ".lrc");
-            if (File.Exists(lrc))
-            {
-                foreach (var raw in File.ReadAllLines(lrc))
-                {
-                    var stamps = Regex.Matches(raw, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]");
-                    if (stamps.Count == 0) continue;
-                    var text = Regex.Replace(raw, @"\[[^\]]*]", "").Trim();
-                    if (text.Length == 0) continue;
-                    foreach (Match stamp in stamps)
-                    {
-                        var minutes = int.Parse(stamp.Groups[1].Value);
-                        var seconds = int.Parse(stamp.Groups[2].Value);
-                        var fraction = stamp.Groups[3].Success
-                            ? stamp.Groups[3].Value.PadRight(3, '0')[..3]
-                            : "000";
-                        var at = TimeSpan.FromMilliseconds(
-                            minutes * 60_000 + seconds * 1_000 + int.Parse(fraction));
-                        _lyrics.Add((at, text));
-                    }
-                }
-                _lyrics.Sort((left, right) => left.At.CompareTo(right.At));
-            }
+            var lrc = Path.ChangeExtension(track.Path, ".lrc");
+            if (File.Exists(lrc)) _lyrics = ParseLrc(File.ReadAllText(lrc));
         }
         catch
         {
             _lyrics = new List<(TimeSpan, string)>();
         }
+        if (_lyrics.Count == 0) _lyricsLoading = true;
         UpdateLyricLine();
+        if (_lyricsLoading) _ = LoadOnlineLyricsAsync(track);
+    }
+
+    private static List<(TimeSpan At, string Text)> ParseLrc(string body)
+    {
+        var lines = new List<(TimeSpan, string)>();
+        foreach (var raw in body.Split('\n'))
+        {
+            var stamps = Regex.Matches(raw, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]");
+            if (stamps.Count == 0) continue;
+            var text = Regex.Replace(raw, @"\[[^\]]*]", "").Trim();
+            if (text.Length == 0) continue;
+            foreach (Match stamp in stamps)
+            {
+                var minutes = int.Parse(stamp.Groups[1].Value);
+                var seconds = int.Parse(stamp.Groups[2].Value);
+                var fraction = stamp.Groups[3].Success
+                    ? stamp.Groups[3].Value.PadRight(3, '0')[..3]
+                    : "000";
+                var at = TimeSpan.FromMilliseconds(
+                    minutes * 60_000 + seconds * 1_000 + int.Parse(fraction));
+                lines.Add((at, text));
+            }
+        }
+        lines.Sort((left, right) => left.Item1.CompareTo(right.Item1));
+        return lines;
+    }
+
+    private async Task LoadOnlineLyricsAsync(Track track)
+    {
+        var requestedId = track.Id;
+        try
+        {
+            var cache = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Velvet", "lyrics");
+            Directory.CreateDirectory(cache);
+            var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+                System.Text.Encoding.UTF8.GetBytes(
+                    $"{track.Title}|{track.Artist}|{track.DurationMs / 1000}")));
+            var cached = Path.Combine(cache, key + ".lrc");
+
+            var body = File.Exists(cached) ? await File.ReadAllTextAsync(cached) : null;
+            body ??= await FetchOnlineLyricsAsync(track);
+            if (CurrentId != requestedId) return;
+
+            var parsed = body is null ? new List<(TimeSpan, string)>() : ParseLrc(body);
+            if (body is not null && !File.Exists(cached))
+                await File.WriteAllTextAsync(cached, body);
+            _lyrics = parsed;
+            UpdateLyricLine();
+        }
+        catch
+        {
+            // Offline or no match: the room simply has no lyrics for this track.
+        }
+        finally
+        {
+            if (CurrentId == requestedId)
+            {
+                _lyricsLoading = false;
+                UpdateLyricLine();
+            }
+        }
+    }
+
+    private static async Task<string?> FetchOnlineLyricsAsync(Track track)
+    {
+        if (string.IsNullOrWhiteSpace(track.Title) || string.IsNullOrWhiteSpace(track.Artist))
+            return null;
+
+        var direct = "https://lrclib.net/api/get?track_name=" +
+            Uri.EscapeDataString(track.Title) +
+            "&artist_name=" + Uri.EscapeDataString(track.Artist);
+        if (!string.IsNullOrWhiteSpace(track.Album))
+            direct += "&album_name=" + Uri.EscapeDataString(track.Album);
+        if (track.DurationMs > 0)
+            direct += "&duration=" + (track.DurationMs / 1000);
+
+        string? plain = null;
+        var body = await TryGetLyricsJsonAsync(direct);
+        if (body is not null)
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var synced = ReadSynced(root);
+            if (synced is not null) return synced;
+            plain = ReadPlain(root);
+        }
+
+        var search = "https://lrclib.net/api/search?q=" +
+            Uri.EscapeDataString($"{track.Artist} {track.Title}");
+        var results = await TryGetLyricsJsonAsync(search);
+        if (results is not null)
+        {
+            using var list = JsonDocument.Parse(results);
+            if (list.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in list.RootElement.EnumerateArray())
+                {
+                    var synced = ReadSynced(item);
+                    if (synced is not null) return synced;
+                    plain ??= ReadPlain(item);
+                }
+            }
+        }
+
+        var pseudo = PlainToPseudoLrc(plain, track.DurationMs);
+        return pseudo ?? await FetchOvhLyricsAsync(track);
+    }
+
+    private static async Task<string?> FetchOvhLyricsAsync(Track track)
+    {
+        try
+        {
+            var url = "https://api.lyrics.ovh/v1/" +
+                Uri.EscapeDataString(track.Artist) + "/" +
+                Uri.EscapeDataString(track.Title);
+            var body = await TryGetLyricsJsonAsync(url);
+            if (body is null) return null;
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.TryGetProperty("lyrics", out var lyrics) &&
+                lyrics.ValueKind == JsonValueKind.String)
+            {
+                return PlainToPseudoLrc(lyrics.GetString(), track.DurationMs);
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadSynced(JsonElement element) =>
+        element.TryGetProperty("syncedLyrics", out var synced) &&
+        synced.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(synced.GetString())
+            ? synced.GetString()
+            : null;
+
+    private static string? ReadPlain(JsonElement element) =>
+        element.TryGetProperty("plainLyrics", out var plain) &&
+        plain.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(plain.GetString())
+            ? plain.GetString()
+            : null;
+
+    /// <summary>
+    /// Some catalogues only publish unsynced text. Spread those lines across the
+    /// track so the lyric stage still moves instead of showing nothing.
+    /// </summary>
+    private static string? PlainToPseudoLrc(string? plain, long durationMs)
+    {
+        if (string.IsNullOrWhiteSpace(plain)) return null;
+        var lines = plain.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .Take(260)
+            .ToList();
+        if (lines.Count == 0) return null;
+
+        var totalMs = durationMs > 0 ? durationMs : lines.Count * 3200L;
+        var start = Math.Min(8000.0, totalMs * 0.05);
+        var end = totalMs * 0.94;
+        var step = Math.Max(900.0, (end - start) / lines.Count);
+        return string.Join('\n', lines.Select((line, index) =>
+        {
+            var at = TimeSpan.FromMilliseconds(start + step * index);
+            return $"[{(int)at.TotalMinutes:00}:{at.Seconds:00}.{at.Milliseconds:000}]{line}";
+        }));
+    }
+
+    private static async Task<string?> TryGetLyricsJsonAsync(string url)
+    {
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.UserAgent.ParseAdd(
+                    "Velvet/1.9.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreaming)");
+                request.Headers.Accept.ParseAdd("application/json");
+                using var response = await LyricsHttp.SendAsync(request);
+                if ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500)
+                {
+                    if (attempt < 3) await Task.Delay(320 * attempt);
+                    continue;
+                }
+                if (!response.IsSuccessStatusCode) return null;
+                return await response.Content.ReadAsStringAsync();
+            }
+            catch
+            {
+                if (attempt >= 3) return null;
+                await Task.Delay(320 * attempt);
+            }
+        }
+        return null;
     }
 
     private void UpdateLyricLine()
     {
         if (_lyrics.Count == 0)
         {
+            _lastLyricText = "";
             DiscoLyricText.Text = "";
-            DiscoLyricNext.Text = "";
+            DiscoLyricNext.Text = _lyricsLoading
+                ? "Finding lyrics…"
+                : _disco && _engine.IsPlaying ? "No lyrics found for this track" : "";
             return;
         }
 
@@ -852,7 +1015,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             index = i;
         }
 
-        DiscoLyricText.Text = index >= 0 ? _lyrics[index].Text : "";
+        var current = index >= 0 ? _lyrics[index].Text : "";
+        if (current != _lastLyricText)
+        {
+            _lastLyricText = current;
+            DiscoLyricText.Text = current;
+            if (current.Length > 0)
+            {
+                DiscoLyricText.BeginAnimation(OpacityProperty,
+                    new DoubleAnimation(0.08, 1, TimeSpan.FromMilliseconds(260))
+                    {
+                        EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                    });
+                DiscoLyricTransform.BeginAnimation(TranslateTransform.YProperty,
+                    new DoubleAnimation(16, 0, TimeSpan.FromMilliseconds(340))
+                    {
+                        EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                    });
+            }
+        }
         DiscoLyricNext.Text = index + 1 < _lyrics.Count ? _lyrics[index + 1].Text : "";
     }
 
@@ -940,35 +1121,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         HeroVeins.Opacity = _veinLevel;
 
         if (!_disco) return;
-        _discoPhase = (_discoPhase + 0.0042f) % 1f;
-        var angle = _discoPhase * Math.PI * 2;
-        DiscoATransform.X = Math.Sin(angle * 0.8) * 150;
-        DiscoATransform.Y = Math.Cos(angle * 0.6) * 90;
-        DiscoBTransform.X = Math.Cos(angle * 0.7) * 130;
-        DiscoBTransform.Y = Math.Sin(angle * 0.9) * 110;
-        DiscoCTransform.X = Math.Sin(angle * 0.5 + 1.3) * 160;
-        DiscoCTransform.Y = Math.Cos(angle * 0.8) * 70;
-        DiscoDTransform.X = Math.Cos(angle * 0.9 + 2.1) * 120;
-        DiscoDTransform.Y = Math.Sin(angle * 0.6) * 80;
-
-        DiscoA.Opacity = 0.28 + bass * 0.55;
-        DiscoB.Opacity = 0.24 + bass * 0.48;
-        DiscoC.Opacity = 0.22 + bass * 0.52;
-        DiscoD.Opacity = 0.18 + bass * 0.42;
-
-        if (bass > 0.48f && DateTime.UtcNow - _lastDiscoColor > TimeSpan.FromMilliseconds(210))
-        {
-            _lastDiscoColor = DateTime.UtcNow;
-            _discoColor = (_discoColor + 1) % DiscoColors.Length;
-            DiscoFlashBrush.Color = DiscoColors[_discoColor];
-        }
-        DiscoFlash.Opacity = bass * 0.16;
+        Disco.Pulse(bass);
     }
 
     private void ResetVeinBreath()
     {
-        _veinLevel = 0.72;
-        HeroVeins.Opacity = 0.72;
+        _veinLevel = 0;
+        HeroVeins.Opacity = 0;
     }
 
     private static string FormatTime(TimeSpan value)
@@ -977,28 +1136,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return value.TotalHours >= 1
             ? $"{(int)value.TotalHours}:{value.Minutes:00}:{value.Seconds:00}"
             : $"{value.Minutes}:{value.Seconds:00}";
-    }
-
-    private static RadialGradientBrush BuildGlow(uint argb)
-    {
-        var color = Color.FromArgb(
-            (byte)((argb >> 24) & 0xFF),
-            (byte)((argb >> 16) & 0xFF),
-            (byte)((argb >> 8) & 0xFF),
-            (byte)(argb & 0xFF));
-
-        var brush = new RadialGradientBrush
-        {
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, color.R, color.G, color.B), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x1C, color.R, color.G, color.B), 0.6));
-        brush.GradientStops.Add(new GradientStop(Colors.Transparent, 1));
-        brush.Freeze();
-        return brush;
     }
 
     private async Task RefreshSessionAsync()

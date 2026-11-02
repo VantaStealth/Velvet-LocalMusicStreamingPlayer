@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import path from "node:path";
 
 const owner = "VantaStealth";
@@ -151,6 +151,7 @@ const deleteBase = `https://api.github.com/repos/${owner}/${repo}/releases/asset
 // manifest remembers the rewritten name for each source file, which also lets
 // us replace an asset whose bytes changed and delete tracks that were removed.
 const previousNames = new Map();
+const previousLyrics = new Map();
 const oldManifestAsset = (release.assets || []).find((asset) => asset.name === "manifest.json");
 if (oldManifestAsset) {
   try {
@@ -160,6 +161,10 @@ if (oldManifestAsset) {
       for (const track of old.tracks || []) {
         const assetName = decodeURIComponent(track.url.split("/").pop());
         if (track.name && assetName) previousNames.set(track.name, assetName);
+        if (track.name && track.lyrics) {
+          const lyricAsset = decodeURIComponent(track.lyrics.split("/").pop());
+          if (lyricAsset) previousLyrics.set(track.name, lyricAsset);
+        }
       }
     }
   } catch {
@@ -179,7 +184,25 @@ const files = readdirSync(musicDir)
   .map((name) => {
     const full = path.join(musicDir, name);
     const stat = statSync(full);
-    return { name, full, size: stat.size, modified: stat.mtimeMs };
+
+    // Sidecars next to the audio travel with it: <track>.lrc is uploaded as an
+    // asset and linked from the track entry so every client gets lyrics.
+    const base = name.replace(/\.[^.]+$/, "");
+    let lyric = null;
+    for (const extension of [".lrc", ".LRC"]) {
+      const lyricPath = path.join(musicDir, base + extension);
+      if (!existsSync(lyricPath)) continue;
+      const lyricStat = statSync(lyricPath);
+      lyric = {
+        name: base + extension,
+        full: lyricPath,
+        size: lyricStat.size,
+        modified: lyricStat.mtimeMs
+      };
+      break;
+    }
+
+    return { name, full, size: stat.size, modified: stat.mtimeMs, lyric };
   });
 
 const assetsByName = new Map();
@@ -275,8 +298,41 @@ for (const file of files) {
     }
   }
 
+  let lyricAsset = null;
+  if (file.lyric) {
+    const candidates = [
+      file.lyric.name,
+      normalize(file.lyric.name),
+      previousLyrics.get(file.name)
+    ].filter(Boolean);
+    lyricAsset = candidates.map((name) => assetsByName.get(name)).find(Boolean);
+
+    if (lyricAsset) {
+      claimed.add(lyricAsset.id);
+      removedAssets.delete(lyricAsset.id);
+      const stale =
+        lyricAsset.size !== file.lyric.size ||
+        new Date(lyricAsset.updated_at).getTime() < file.lyric.modified;
+      if (stale) {
+        await deleteAsset(lyricAsset);
+        lyricAsset = await upload(file.lyric);
+        uploaded += 1;
+        bytes += file.lyric.size;
+        console.log(`lyrics   ${file.lyric.name} (replaced)`);
+      } else {
+        console.log(`lyrics   ${file.lyric.name} (present)`);
+      }
+    } else {
+      lyricAsset = await upload(file.lyric);
+      uploaded += 1;
+      bytes += file.lyric.size;
+      console.log(`lyrics   ${file.lyric.name} (uploaded)`);
+    }
+  }
+
   const track = { name: file.name, size: asset.size, url: asset.browser_download_url };
   if (backupUrls.length) track.mirrors = backupUrls;
+  if (lyricAsset) track.lyrics = lyricAsset.browser_download_url;
   tracks.push(track);
 }
 
@@ -286,7 +342,7 @@ for (const asset of removedAssets.values()) {
 
 const manifest = {
   name: "Velvet Cloud",
-  version: 3,
+  version: 4,
   updated: new Date().toISOString().slice(0, 10),
   tracks
 };

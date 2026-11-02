@@ -11,15 +11,15 @@ namespace Velvet.Desktop.Services;
 public static class CloudLibraryService
 {
     public const string ManifestUrl =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=5";
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=7";
 
     // If the release asset is unavailable, the same manifest is mirrored in the
     // repository itself so clients can still discover backup track sources.
     private static readonly string[] ManifestSources =
     {
         ManifestUrl,
-        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=5",
-        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=5"
+        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=7",
+        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=7"
     };
 
     private const string Owner = "VantaStealth";
@@ -42,6 +42,7 @@ public static class CloudLibraryService
     public sealed record CloudEntry(string Name, string Url, long Size)
     {
         public IReadOnlyList<string> Mirrors { get; init; } = Array.Empty<string>();
+        public string? Lyrics { get; init; }
 
         public IEnumerable<string> Sources =>
             new[] { Url }.Concat(Mirrors).Where(source => !string.IsNullOrWhiteSpace(source));
@@ -96,7 +97,13 @@ public static class CloudLibraryService
                         }
                     }
 
-                    tracks.Add(new CloudEntry(name, url, size) { Mirrors = mirrors });
+                    tracks.Add(new CloudEntry(name, url, size)
+                    {
+                        Mirrors = mirrors,
+                        Lyrics = item.TryGetProperty("lyrics", out var lyricsElement)
+                            ? lyricsElement.GetString()
+                            : null
+                    });
                 }
             }
 
@@ -161,6 +168,24 @@ public static class CloudLibraryService
                 }
 
                 File.Move(temp, destination, true);
+                if (!string.IsNullOrWhiteSpace(entry.Lyrics))
+                {
+                    var lyricName = Path.GetFileNameWithoutExtension(entry.Name) + ".lrc";
+                    var lyricPath = Path.Combine(folder, lyricName);
+                    try
+                    {
+                        using var lyricResponse = await Http.GetAsync(entry.Lyrics, token);
+                        lyricResponse.EnsureSuccessStatusCode();
+                        await File.WriteAllTextAsync(
+                            lyricPath,
+                            await lyricResponse.Content.ReadAsStringAsync(token),
+                            token);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        // The audio is already in place; lyrics can be fetched later.
+                    }
+                }
                 item.Progress = 1;
                 return;
             }
@@ -186,6 +211,31 @@ public static class CloudLibraryService
         var name = Path.GetFileName(localPath);
         item.Progress = 0.35;
 
+        var url = await UploadAssetAsync(githubToken, releaseId, name, bytes, token);
+        item.Progress = 0.8;
+
+        string? lyricUrl = null;
+        var lyricPath = Path.ChangeExtension(localPath, ".lrc");
+        if (File.Exists(lyricPath))
+        {
+            try
+            {
+                var lyricBytes = await File.ReadAllBytesAsync(lyricPath, token);
+                lyricUrl = await UploadAssetAsync(
+                    githubToken, releaseId, Path.GetFileName(lyricPath), lyricBytes, token);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The audio is still published; the sidecar can be retried later.
+            }
+        }
+
+        return new CloudEntry(name, url, bytes.Length) { Lyrics = lyricUrl };
+    }
+
+    private static async Task<string> UploadAssetAsync(
+        string githubToken, long releaseId, string name, byte[] bytes, CancellationToken token)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"https://uploads.github.com/repos/{Owner}/{Repo}/releases/{releaseId}/assets?name={Uri.EscapeDataString(name)}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", githubToken);
@@ -200,9 +250,7 @@ public static class CloudLibraryService
             throw new InvalidOperationException($"GitHub rejected {name} ({(int)response.StatusCode}).");
 
         using var document = JsonDocument.Parse(body);
-        var url = document.RootElement.GetProperty("browser_download_url").GetString() ?? "";
-        item.Progress = 0.8;
-        return new CloudEntry(name, url, bytes.Length);
+        return document.RootElement.GetProperty("browser_download_url").GetString() ?? "";
     }
 
     public static async Task PublishManifestAsync(IReadOnlyList<CloudEntry> entries, CancellationToken token)
@@ -226,14 +274,15 @@ public static class CloudLibraryService
         var manifest = JsonSerializer.Serialize(new
         {
             name = "Velvet Cloud",
-            version = 3,
+            version = 4,
             updated = DateTime.UtcNow.ToString("yyyy-MM-dd"),
             tracks = entries.Select(entry => new
             {
                 name = entry.Name,
                 size = entry.Size,
                 url = entry.Url,
-                mirrors = entry.Mirrors.Count > 0 ? entry.Mirrors.ToArray() : null
+                mirrors = entry.Mirrors.Count > 0 ? entry.Mirrors.ToArray() : null,
+                lyrics = entry.Lyrics
             })
         });
 

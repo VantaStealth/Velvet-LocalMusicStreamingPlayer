@@ -112,6 +112,8 @@ import com.velvet.music.ui.theme.TextTertiary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.PI
+import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,9 +148,23 @@ fun PlayerScreen(
         lyricLines = emptyList()
         lyricMessage = null
         if (player.mediaId.isNotBlank()) {
-            val loaded = withContext(Dispatchers.IO) { Lyrics.load(context, player.mediaId) }
+            lyricMessage = "Finding synced lyrics…"
+            val loaded = withContext(Dispatchers.IO) {
+                Lyrics.load(
+                    context,
+                    player.mediaId,
+                    player.title,
+                    player.artist,
+                    player.album,
+                    player.durationMs
+                )
+            }
             lyricLines = loaded
-            if (loaded.isEmpty()) lyricMessage = "No .lrc file beside this track yet."
+            lyricMessage = if (loaded.isEmpty()) {
+                "No synced lyrics for this track yet. Drop a .lrc file beside it or add one to Velvet Cloud."
+            } else {
+                null
+            }
         }
     }
 
@@ -905,39 +921,92 @@ private fun LyricsPane(
         lines.indexOfLast { it.timeMs <= positionMs }.coerceAtLeast(0)
     }
     val start = if (lines.size <= 5) 0 else (active - 2).coerceIn(0, lines.size - 5)
+    val transition = rememberInfiniteTransition(label = "lyricDust")
+    val dust by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(9000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "lyricDustDrift"
+    )
 
-    Column(
+    Box(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
             .background(Color.White.copy(alpha = 0.045f))
             .border(1.dp, Hairline, RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (lines.isEmpty()) {
-            Text(
-                text = message ?: "No lyrics for this track.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextTertiary,
-                textAlign = TextAlign.Center
-            )
-        } else {
-            lines.drop(start).take(5).forEachIndexed { offset, line ->
-                val current = start + offset == active
-                Text(
-                    text = line.text,
-                    style = if (current) {
-                        MaterialTheme.typography.titleMedium
-                    } else {
-                        MaterialTheme.typography.bodySmall
-                    },
-                    color = if (current) bright else TextTertiary,
-                    fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp)
+        Canvas(Modifier.matchParentSize()) {
+            for (index in 0 until 26) {
+                val progress = (dust + index / 26f) % 1f
+                val x = size.width * ((index * 0.37f) % 1f) +
+                    sin(progress * 2f * PI.toFloat() + index) * 14.dp.toPx()
+                val y = size.height * (1f - progress)
+                val radius = (0.7f + (index % 3) * 0.55f).dp.toPx()
+                drawCircle(
+                    color = bright.copy(alpha = 0.06f + (index % 4) * 0.035f),
+                    radius = radius,
+                    center = Offset(x, y)
                 )
+            }
+        }
+
+        AnimatedContent(
+            targetState = start,
+            transitionSpec = {
+                (slideInVertically { it / 3 } + fadeIn()) togetherWith
+                    (slideOutVertically { -it / 3 } + fadeOut())
+            },
+            label = "lyricWindow"
+        ) { first ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (lines.isEmpty()) {
+                    Text(
+                        text = message ?: "No lyrics for this track.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextTertiary,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    lines.drop(first).take(5).forEachIndexed { offset, line ->
+                        val current = first + offset == active
+                        val emphasis by animateFloatAsState(
+                            targetValue = if (current) 1f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = 0.72f,
+                                stiffness = 420f
+                            ),
+                            label = "lyricEmphasis"
+                        )
+                        Text(
+                            text = line.text,
+                            style = if (current) {
+                                MaterialTheme.typography.titleMedium
+                            } else {
+                                MaterialTheme.typography.bodySmall
+                            },
+                            color = if (current) bright else TextTertiary,
+                            fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .graphicsLayer {
+                                    alpha = 0.52f + emphasis * 0.48f
+                                    val scale = 0.97f + emphasis * 0.05f
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                        )
+                    }
+                }
             }
         }
     }

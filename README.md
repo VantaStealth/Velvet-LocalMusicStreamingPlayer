@@ -15,18 +15,20 @@ Velvet is a local music player for Windows and Android, built around the files y
 | Platform | File | Requirements |
 | --- | --- | --- |
 | Windows 10 2004+ / 11 (x64) | [`Velvet.exe`](Velvet.exe) | None — self-contained, no .NET install |
-| Android 8.0+ | [`Velvet-1.8.apk`](Velvet-1.8.apk) | None |
+| Android 8.0+ | [`Velvet-1.9.apk`](Velvet-1.9.apk) | None |
 
 The Windows build is a single self-contained executable. It carries its own .NET runtime, WPF, and native libraries, so a fresh PC can double-click it and play. There is no separate dependency installer to run.
 
-## What's new in 1.8
+## What's new in 1.9
 
-- **The volume pill is alive again** — the Android overlay is the full 1.6 design at 79% translucency. The liquid sloshes against the glass, the surface rolls in a double wave, and bubbles rise, drift, and pop.
-- **Disco mode** — beat-synced colour fields drift across the room, the room flashes on kicks, and lyrics fade through the centre of the stage.
-- **Synced lyrics** — drop a matching `.lrc` file beside a track and the lyric stage follows playback. No lyrics are bundled with Velvet, so every word comes from your own library.
-- **Veins hit every beat** — the desktop veins now read the spectrum's smoothed bass on every rendered frame, so they breathe with the kick instead of flashing or skipping beats.
-- **Desktop volume HUD, smaller and clean** — 320×132 glass card with the glow given room to fade, so there are no rectangular cut-outs.
-- **Velvet Cloud failover** — manifests can carry backup mirror URLs, and both apps try each source in order. The manifest itself has repository and CDN fallbacks. Backup hosts live entirely in the backend and never appear in either app.
+- **Disco mode, rebuilt** — every light now has a source. Spotlights sweep in from the borders, corner washes stay local, theme-coloured liquid flows along the floor, sparks burst on kicks, shockwaves expand from the explosion, and a pirate ship occasionally sails through. Nothing is washed over the whole window.
+- **Lyrics that actually arrive** — Velvet looks for a sidecar first, then a cloud copy published beside the track, then a synced-lyrics catalogue. Tracks that only publish plain text are timed across the song, and the lyric stage animates each line in and out.
+- **Cloud lyrics** — 29 of the cloud tracks now carry `.lrc` assets in the same public release as their audio. Downloading a cloud track brings its lyrics with it.
+- **Readable, fluid volume pill** — the Android panel is no longer see-through: a near-opaque gradient keeps every label crisp. Dragging follows your finger continuously and eases the liquid and level instead of snapping, while the phone still receives valid OS volume steps.
+- **Any level, not just the phone's steps** — slide to whatever position you want. Velvet holds the continuous value and commits the nearest step your device supports, so it no longer sticks at 0, 13, 20, 27.
+- **Quiet when paused** — the desktop spectrum halo and its chrome are gone while playback is stopped, along with the idle line pulse.
+- **Veins hit every beat** — the desktop veins read the spectrum's smoothed bass on every rendered frame, so they breathe with the kick instead of flashing or skipping beats.
+- **Velvet Cloud failover** — manifests carry backup mirror URLs, and both apps try each source in order. The manifest itself has repository and CDN fallbacks. Backup hosts live entirely in the backend and never appear in either app.
 
 ## Velvet Cloud
 
@@ -37,6 +39,7 @@ https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/vel
 ```
 
 - The manifest and all 30 tracks are hardcoded into both apps. There is nothing to configure.
+- Each track can publish a `.lrc` next to its audio. Cloud downloads bring the matching lyric sidecar with them.
 - On launch, both apps notice which cloud tracks are missing from your selected folder and offer to download them.
 - Android can download from Velvet Cloud. There is no upload button on mobile, so the cloud cannot be filled by strangers.
 - Desktop can download and publish. Publishing uses your local GitHub credential (Git Credential Manager); `tools/publish-cloud.mjs` is the command-line path used to seed the release.
@@ -68,13 +71,19 @@ The publisher signs and uploads each track with AWS Signature V4, skips files al
 
 ### Lyrics
 
-Velvet does not ship lyrics. Place a `.lrc` file with the same name as the track beside it (`Song.mp3` → `Song.lrc`) and open **LYRICS** on Android or **Disco mode** on desktop. Timed `[mm:ss.xx]` lines follow playback; metadata tags are ignored. If there is no sidecar file, the app says so instead of inventing lyrics.
+Open **LYRICS** on Android or **Disco mode** on desktop. Velvet resolves lyrics in this order:
+
+1. A `.lrc` file beside the track (`Song.mp3` → `Song.lrc`).
+2. The lyric sidecar published with that track in Velvet Cloud.
+3. A runtime lookup against a public synced-lyrics catalogue.
+
+Timed `[mm:ss.xx]` lines follow playback. If a catalogue only has unsynchronised text, Velvet spreads those lines across the track so the stage still moves. Lyrics are cached locally after the first lookup, and the app says plainly when a track has no lyrics instead of inventing them. `tools/fetch-lyrics.mjs` fills in sidecars for a local library and `tools/publish-cloud.mjs` uploads them beside the audio.
 
 ## Volume controller, everywhere
 
 **Windows.** While Velvet is running — including from the tray at boot — the volume keys are captured system-wide. Velvet steps the Windows media volume through Core Audio and draws its own compact glass HUD at the bottom of the screen. The stock Windows volume flyout is suppressed. Mute works too.
 
-**Android.** Open the **More** menu and choose **Volume keys takeover**. Enabling the Velvet accessibility service lets volume key presses open the full Velvet volume pill anywhere on the phone: on the lock screen, inside games, or with nothing playing at all. The pill is 79% translucent and animated even when paused. Tap **MIX** on the pill for Media, Ring, Alerts, Alarm, Calls, and the Velvet channel. The service only filters volume keys and never reads screen content.
+**Android.** Open the **More** menu and choose **Volume keys takeover**. Enabling the Velvet accessibility service lets volume key presses open the full Velvet volume pill anywhere on the phone: on the lock screen, inside games, or with nothing playing at all. The panel is near-opaque for readability, and its liquid, bubbles, and level readout ease into every change. Drag anywhere on the rail to pick any level; Velvet keeps the continuous value and commits the closest step the device exposes. Tap **MIX** on the pill for Media, Ring, Alerts, Alarm, Calls, and the Velvet channel. The service only filters volume keys and never reads screen content.
 
 Android exposes one shared media stream to every app, so the mixer controls device streams while the **Velvet channel** slider is separate; it can push Velvet up to 150% so it sits above a game or video.
 
@@ -105,7 +114,7 @@ Android exposes one shared media stream to every app, so the mixer controls devi
 - Media3 playback service with a framed, accent-tinted notification.
 - Procedural cover art for tracks without embedded artwork.
 - Favourites, sorting, search, albums, and a daily Velvet Mix.
-- **DISCO** mode for beat-synced lights, and **LYRICS** for timed `.lrc` sidecars.
+- **DISCO** mode for beat-synced lights, spark bursts, and animated lyrics.
 - Per-stream mixer for media, ring, alerts, alarms, and calls, plus the Velvet channel.
 
 ## Features
@@ -113,7 +122,7 @@ Android exposes one shared media stream to every app, so the mixer controls devi
 - **Local library** — point Velvet at a folder and it indexes MP3, M4A/AAC, FLAC, WAV, OGG, and Opus files, tags, and embedded artwork.
 - **Velvet Cloud** — download missing tracks from the hosted shared library on both platforms, with backend-only mirror failover.
 - **Real spectrum** — 48-band playback analysis drives the desktop lines, the mobile visualizer, and the vein beat response.
-- **Disco mode** — moving colour fields, kick flashes, and timed lyrics on both platforms.
+- **Disco mode** — sourced spotlights, corner light, liquid floors, kick explosions, particles, a passing ship, and animated lyrics on both platforms.
 - **Tray-first Windows app** — closing the window keeps playback alive. Velvet pins itself next to Wi-Fi, volume, and battery in the notification area.
 - **Starts with Windows, stays out of the way** — the tray icon is registered at boot; clicking it opens the app, and it is not forced open on login.
 - **Windows media session** — SMTC integration so media keys and system media controls drive playback.
@@ -165,15 +174,16 @@ The APK lands in `app/build/outputs/apk/debug/`.
 
 ### Publishing to Velvet Cloud
 
-`tools/publish-cloud.mjs` reconciles the `velvet-cloud` release with your local library: it uploads new tracks, replaces changed ones, removes tracks you deleted, rebuilds `manifest.json`, and republishes it. It reads a GitHub token from Git Credential Manager; no token is stored in this repository.
+`tools/fetch-lyrics.mjs` fills in `.lrc` sidecars from track tags before publishing. `tools/publish-cloud.mjs` reconciles the `velvet-cloud` release with your local library: it uploads new tracks and their lyrics, replaces changed ones, removes tracks you deleted, rebuilds `manifest.json`, and republishes it. It reads a GitHub token from Git Credential Manager; no token is stored in this repository.
 
 ```powershell
+node tools/fetch-lyrics.mjs "C:\Users\You\Velvet Cloud"
 node tools/publish-cloud.mjs
 ```
 
 ## Notes
 
-- Velvet never modifies your audio files. Generated artwork is written to Velvet's own app-data folder.
+- Velvet never modifies your audio files. Cloud downloads also write a matching `.lrc` sidecar, and generated artwork and lyric caches live in Velvet's own app-data folder.
 - Tray pinning uses the same per-user registry setting Windows writes when you drag an icon out of the overflow flyout.
 - The Windows volume hook is active only while Velvet is running. Quitting Velvet returns volume keys to Windows.
 - Android's accessibility service is optional. Without it, the in-app volume HUD still works while Velvet is open.

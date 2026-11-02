@@ -33,10 +33,6 @@ public sealed class SpectrumVisualizer : FrameworkElement
         nameof(LengthFraction), typeof(double), typeof(SpectrumVisualizer),
         new FrameworkPropertyMetadata(0.09, FrameworkPropertyMetadataOptions.AffectsRender));
 
-    public static readonly DependencyProperty GlowBrushProperty = DependencyProperty.Register(
-        nameof(GlowBrush), typeof(Brush), typeof(SpectrumVisualizer),
-        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
-
     private const int SparkCount = 36;
     private const int SparkAlphaLevels = 12;
 
@@ -115,12 +111,6 @@ public sealed class SpectrumVisualizer : FrameworkElement
     {
         get => (double)GetValue(LengthFractionProperty);
         set => SetValue(LengthFractionProperty, value);
-    }
-
-    public Brush? GlowBrush
-    {
-        get => (Brush?)GetValue(GlowBrushProperty);
-        set => SetValue(GlowBrushProperty, value);
     }
 
     private double InnerRadius(double minSide) =>
@@ -250,19 +240,14 @@ public sealed class SpectrumVisualizer : FrameworkElement
         var height = ActualHeight;
         if (width < 8 || height < 8) return;
 
+        if (!Active) return;
+
         var accent = Resolve(AccentBrush, Color.FromRgb(0xA7, 0x8B, 0xFA));
         var bright = Resolve(BrightBrush, Colors.White);
         var minSide = Math.Min(width, height);
         EnsureCache(accent, bright, minSide);
 
         var center = new Point(width / 2, height / 2);
-        var glowBrush = GlowBrush;
-        if (glowBrush is not null)
-        {
-            var halo = minSide * 0.46;
-            dc.DrawEllipse(glowBrush, null, center, halo, halo);
-        }
-
         var innerRadius = InnerRadius(minSide);
         var maxLength = MaxLength(minSide);
         var bands = Math.Clamp(Bands, 8, _values.Length);
