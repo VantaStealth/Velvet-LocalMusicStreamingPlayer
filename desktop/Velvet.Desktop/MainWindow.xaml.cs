@@ -33,6 +33,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private ScaleTransform[] _lineScales = Array.Empty<ScaleTransform>();
 
     private readonly DispatcherTimer _ticker;
+    private RotateTransform? _accentRotate;
+    private DoubleAnimation? _accentSpin;
     private readonly DispatcherTimer _watchDebounce;
     private readonly DispatcherTimer _toastTimer;
     private readonly DispatcherTimer _settingsDebounce;
@@ -154,7 +156,60 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DataContext = this;
         Loaded += OnLoaded;
         Closing += OnClosing;
-        StateChanged += (_, _) => UpdateMaximizeIcon();
+        StateChanged += (_, _) =>
+        {
+            UpdateMaximizeIcon();
+            SyncActivity();
+        };
+        IsVisibleChanged += (_, _) => SyncActivity();
+        Activated += (_, _) =>
+        {
+            if (IsVisible && WindowState != WindowState.Minimized) StartAccentSpin();
+        };
+        Deactivated += (_, _) => StopAccentSpin();
+    }
+
+    private void SyncActivity()
+    {
+        if (_closing) return;
+
+        var active = IsVisible && WindowState != WindowState.Minimized;
+        if (!active)
+        {
+            _ticker.Stop();
+            StopAccentSpin();
+            UpdateSpectrumDemand();
+            return;
+        }
+
+        _ticker.Interval = TimeSpan.FromMilliseconds(_engine.IsPlaying ? 200 : 700);
+        _ticker.Start();
+        if (IsActive) StartAccentSpin();
+        UpdateSpectrumDemand();
+    }
+
+    private void UpdateSpectrumDemand()
+    {
+        var needed = _engine.IsPlaying && (IsVisible || _island is not null);
+        if (needed)
+        {
+            _spectrum.Start();
+        }
+        else
+        {
+            _spectrum.Stop();
+        }
+    }
+
+    private void StartAccentSpin()
+    {
+        if (_accentRotate is null || _accentSpin is null || _closing) return;
+        _accentRotate.BeginAnimation(RotateTransform.AngleProperty, _accentSpin);
+    }
+
+    private void StopAccentSpin()
+    {
+        _accentRotate?.BeginAnimation(RotateTransform.AngleProperty, null);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -379,11 +434,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ShowToast("Folder missing", "Velvet could not find the saved folder. Choose it again.");
         }
 
-        _ticker.Start();
-        _spectrum.Start();
         InitLiveAccents();
         InitSpectrumLines();
         RecommendCloudSync();
+        SyncActivity();
 
         if (StartHidden)
         {
@@ -419,11 +473,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         brush.RelativeTransform = rotate;
         SearchShell.BorderBrush = brush;
 
-        rotate.BeginAnimation(RotateTransform.AngleProperty,
-            new DoubleAnimation(0, 360, TimeSpan.FromSeconds(7))
-            {
-                RepeatBehavior = RepeatBehavior.Forever
-            });
+        _accentRotate = rotate;
+        _accentSpin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(7))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        if (IsActive) StartAccentSpin();
     }
 
     private void InitSpectrumLines()
@@ -493,10 +548,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (!ReferenceEquals(_island, island)) return;
             _island = null;
             IslandButtonText = "Open floating island";
+            UpdateSpectrumDemand();
         };
         _island = island;
         IslandButtonText = "Hide floating island";
         island.Show();
+        UpdateSpectrumDemand();
     }
 
     private void ScheduleSettingsSave()
@@ -704,7 +761,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SessionStatus = _engine.IsPlaying ? "ISLAND MEDIA CONTROLS · LIVE" : "ISLAND MEDIA CONTROLS · READY";
 
         Spectrum.Active = _engine.IsPlaying;
-        if (_engine.IsPlaying) _spectrum.Start();
+        SyncActivity();
 
         UpdateSeekFromEngine();
         UpdateShuffleState();
@@ -752,6 +809,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Ticker_Tick(object? sender, EventArgs e)
     {
         UpdateSpectrumLines();
+        UpdateVeinBreath();
         if (!_engine.HasTrack) return;
         if (_scrubbing || DateTime.UtcNow < _seekHoldUntil)
         {
@@ -766,6 +824,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ? Math.Clamp(_engine.Position.TotalSeconds / duration, 0, 1)
             : 0;
         if (_engine.IsPlaying) _engine.UpdateTimeline();
+    }
+
+    private void UpdateVeinBreath()
+    {
+        if (!_engine.IsPlaying)
+        {
+            HeroVeins.BeginAnimation(OpacityProperty, null);
+            HeroVeins.Opacity = 0.72;
+            return;
+        }
+
+        var bass = 0f;
+        for (var band = 0; band < 8; band++) bass += _spectrumBuffer[band];
+        bass /= 8f;
+
+        var target = Math.Clamp(0.58 + bass * 1.15, 0.58, 1.0);
+        HeroVeins.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(target, TimeSpan.FromMilliseconds(180))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
     }
 
     private static string FormatTime(TimeSpan value)

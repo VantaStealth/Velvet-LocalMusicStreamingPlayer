@@ -4,7 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -13,12 +17,22 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.velvet.music.MainActivity
 import com.velvet.music.R
+import com.velvet.music.volume.ACTION_APP_VOLUME
+import com.velvet.music.volume.EXTRA_VOLUME
 
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
     private var exoPlayer: ExoPlayer? = null
     private var spectrum: SpectrumCapture? = null
+
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_APP_VOLUME) return
+            val volume = intent.getFloatExtra(EXTRA_VOLUME, -1f)
+            if (volume >= 0f) exoPlayer?.volume = volume.coerceIn(0f, 1.5f)
+        }
+    }
 
     companion object {
         @Volatile
@@ -91,6 +105,13 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity)
             .build()
+
+        ContextCompat.registerReceiver(
+            this,
+            volumeReceiver,
+            IntentFilter(ACTION_APP_VOLUME),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -103,6 +124,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(volumeReceiver) }
         spectrum?.release()
         spectrum = null
         mediaSession?.run {

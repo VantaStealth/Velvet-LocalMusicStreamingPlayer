@@ -1,6 +1,7 @@
 package com.velvet.music.volume
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.graphics.PixelFormat
 import android.media.AudioManager
@@ -10,6 +11,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.ui.graphics.toArgb
 import com.velvet.music.data.Prefs
 import com.velvet.music.ui.theme.paletteFor
@@ -34,16 +36,24 @@ class VolumeKeyService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val key = event.keyCode
-        if (key != KeyEvent.KEYCODE_VOLUME_UP && key != KeyEvent.KEYCODE_VOLUME_DOWN) return false
+        if (key != KeyEvent.KEYCODE_VOLUME_UP &&
+            key != KeyEvent.KEYCODE_VOLUME_DOWN &&
+            key != KeyEvent.KEYCODE_VOLUME_MUTE
+        ) {
+            return false
+        }
 
         if (event.action == KeyEvent.ACTION_DOWN) {
-            val direction = if (key == KeyEvent.KEYCODE_VOLUME_UP) {
-                AudioManager.ADJUST_RAISE
-            } else {
-                AudioManager.ADJUST_LOWER
-            }
+            val manager = audioManager
             runCatching {
-                audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
+                when (key) {
+                    KeyEvent.KEYCODE_VOLUME_UP ->
+                        manager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0)
+                    KeyEvent.KEYCODE_VOLUME_DOWN ->
+                        manager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0)
+                    else ->
+                        manager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
+                }
             }
             showHud()
         }
@@ -52,50 +62,85 @@ class VolumeKeyService : AccessibilityService() {
 
     private fun showHud() {
         val wm = windowManager ?: return
-        val manager = audioManager ?: return
-        val max = runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
-            .getOrDefault(15).coerceAtLeast(1)
-        val current = runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }
-            .getOrDefault(0)
         val palette = paletteFor(Prefs(this).accent)
+        val existing = overlay
 
-        val view = overlay ?: VolumeOverlayView(this).also { created ->
+        val view = existing ?: VolumeOverlayView(this).also { created ->
+            created.onInteraction = { scheduleHide() }
+            created.onModeChange = { scheduleHide() }
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                x = (-14 * resources.displayMetrics.density).toInt()
+                x = (-10 * resources.displayMetrics.density).toInt()
             }
-            runCatching { wm.addView(created, params) }
             created.alpha = 0f
+            created.translationX = 18 * resources.displayMetrics.density
+            runCatching { wm.addView(created, params) }
             overlay = created
         }
 
         view.accent = palette.primary.toArgb()
         view.bright = palette.bright.toArgb()
-        view.fraction = current.toFloat() / max
+        view.refresh()
 
+        if (existing == null) {
+            view.animate().alpha(1f).translationX(0f).setDuration(160L).start()
+        } else {
+            view.animate().cancel()
+            view.alpha = 1f
+            view.translationX = 0f
+        }
+        scheduleHide()
+    }
+
+    private fun scheduleHide() {
         handler.removeCallbacks(hide)
-        view.animate().cancel()
-        view.animate().alpha(1f).setDuration(140L).start()
-        handler.postDelayed(hide, 2200L)
+        val expanded = overlay?.isExpanded == true
+        handler.postDelayed(hide, if (expanded) 7000L else 2600L)
     }
 
     private fun fadeOut() {
         val view = overlay ?: return
-        view.animate().alpha(0f).setDuration(200L).start()
+        overlay = null
+        view.animate().cancel()
+        view.animate()
+            .alpha(0f)
+            .translationX(18 * resources.displayMetrics.density)
+            .setDuration(190L)
+            .withEndAction {
+                runCatching { windowManager?.removeView(view) }
+            }
+            .start()
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(hide)
-        overlay?.let { view -> runCatching { windowManager?.removeView(view) } }
+        overlay?.let { view ->
+            view.animate().cancel()
+            runCatching { windowManager?.removeView(view) }
+        }
         overlay = null
         super.onDestroy()
+    }
+
+    companion object {
+        fun isEnabled(context: Context): Boolean {
+            val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE)
+                as? AccessibilityManager ?: return false
+            return manager.getEnabledAccessibilityServiceList(
+                AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+            ).any { info ->
+                val service = info.resolveInfo?.serviceInfo ?: return@any false
+                service.packageName == context.packageName &&
+                    service.name == VolumeKeyService::class.java.name
+            }
+        }
     }
 }

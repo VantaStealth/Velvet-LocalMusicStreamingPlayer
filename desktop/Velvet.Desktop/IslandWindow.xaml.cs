@@ -38,6 +38,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
     private double _opacityValue;
     private bool _vertical;
     private bool _minimal;
+    private bool _dragging;
     private double _minimalWidth = MinimalWidth;
     private bool _opacityDragging;
     private double _corner = 34;
@@ -293,15 +294,17 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
 
     private void UpdateSnapMark()
     {
-        if (!_minimal || double.IsNaN(Left) || double.IsNaN(Top) || Width <= 0)
+        // The guide is a drag aid, like an editor's alignment line: it is only
+        // visible while the pointer is down and the island is in the snap zone.
+        if (!_minimal || !_dragging || double.IsNaN(Left) || double.IsNaN(Top) || Width <= 0)
         {
             SnapMark.Visibility = Visibility.Collapsed;
             return;
         }
 
         var area = SystemParameters.WorkArea;
-        var centered = Math.Abs(Left + Width / 2 - (area.Left + area.Width / 2)) <= 4;
-        var atTop = Math.Abs(Top - area.Top) <= 4;
+        var centered = Math.Abs(Left + Width / 2 - (area.Left + area.Width / 2)) <= 30;
+        var atTop = Math.Abs(Top - area.Top) <= 26;
         SnapMark.Visibility = centered && atTop ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -366,12 +369,15 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        _dragging = true;
         try
         {
             DragMove();
         }
         catch (InvalidOperationException)
         {
+            _dragging = false;
+            UpdateSnapMark();
             return;
         }
 
@@ -382,6 +388,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
         if (Math.Abs(Left - centeredLeft) <= 56) Left = centeredLeft;
 
         ClampToScreen();
+        _dragging = false;
         UpdateSnapMark();
 
         _settings.IslandLeft = Left;
@@ -436,6 +443,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
     {
         if (!_minimal) return;
 
+        _dragging = true;
         var oldWidth = Width;
         _minimalWidth = Math.Clamp(_minimalWidth + e.HorizontalChange * 2, 236, 620);
         ApplyLayout();
@@ -449,6 +457,8 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
 
     private void Grip_DragCompleted(object sender, DragCompletedEventArgs e)
     {
+        _dragging = false;
+        UpdateSnapMark();
         _settings.IslandLeft = Left;
         _settings.IslandTop = Top;
         ScheduleSave();

@@ -52,56 +52,130 @@ if (existing.status === 200) {
 }
 
 const uploadBase = `https://uploads.github.com/repos/${owner}/${repo}/releases/${release.id}/assets`;
+const deleteBase = `https://api.github.com/repos/${owner}/${repo}/releases/assets`;
+
+// GitHub rewrites asset names (spaces and punctuation change). The previous
+// manifest remembers the rewritten name for each source file, which also lets
+// us replace an asset whose bytes changed and delete tracks that were removed.
+const previousNames = new Map();
+const oldManifestAsset = (release.assets || []).find((asset) => asset.name === "manifest.json");
+if (oldManifestAsset) {
+  try {
+    const response = await fetch(oldManifestAsset.browser_download_url);
+    if (response.ok) {
+      const old = await response.json();
+      for (const track of old.tracks || []) {
+        const assetName = decodeURIComponent(track.url.split("/").pop());
+        if (track.name && assetName) previousNames.set(track.name, assetName);
+      }
+    }
+  } catch {
+    console.log("could not read the previous manifest; matching by name only");
+  }
+}
+
+const normalize = (value) =>
+  value
+    .replace(/[\[\]()｜|'’]/g, "")
+    .replaceAll(" ", ".")
+    .replace(/\.{2,}/g, ".");
+
 const files = readdirSync(musicDir)
   .filter((name) => /\.(mp3|m4a|aac|flac|wav|ogg|oga|opus|wma)$/i.test(name))
-  .sort((a, b) => a.localeCompare(b));
+  .sort((a, b) => a.localeCompare(b))
+  .map((name) => {
+    const full = path.join(musicDir, name);
+    const stat = statSync(full);
+    return { name, full, size: stat.size, modified: stat.mtimeMs };
+  });
 
-// GitHub rewrites asset names (spaces to dots, punctuation stripped); match by name then size.
-const assets = new Map((release.assets || []).map((asset) => [asset.name, asset]));
-const bySize = new Map();
+const assetsByName = new Map();
 for (const asset of release.assets || []) {
-  if (!bySize.has(asset.size)) bySize.set(asset.size, []);
-  bySize.get(asset.size).push(asset);
+  assetsByName.set(asset.name, asset);
+  assetsByName.set(normalize(asset.name), asset);
 }
-const normalize = (value) =>
-  value.replace(/[[\]｜]/g, "").replaceAll(" ", ".");
-const tracks = [];
+
+const claimed = new Set();
+const removedAssets = new Map();
+
+for (const file of files) {
+  const candidates = [
+    file.name,
+    normalize(file.name),
+    previousNames.get(file.name)
+  ].filter(Boolean);
+  file.asset = candidates.map((name) => assetsByName.get(name)).find(Boolean);
+  if (!file.asset) continue;
+
+  claimed.add(file.asset.id);
+  file.stale =
+    file.asset.size !== file.size ||
+    new Date(file.asset.updated_at).getTime() < file.modified;
+}
+
+// Anything left over is a track that no longer exists in the library.
+for (const asset of release.assets || []) {
+  if (asset.name === "manifest.json") continue;
+  if (!claimed.has(asset.id)) removedAssets.set(asset.id, asset);
+}
+
+async function deleteAsset(asset) {
+  const removed = await api(`${deleteBase}/${asset.id}`, { method: "DELETE" });
+  if (removed.status >= 300 && removed.status !== 404) {
+    throw new Error(`Could not remove ${asset.name}: ${removed.status} ${JSON.stringify(removed.body)}`);
+  }
+  console.log(`removed  ${asset.name}`);
+}
+
+async function upload(file, attempt = 1) {
+  const data = readFileSync(file.full);
+  const response = await fetch(`${uploadBase}?name=${encodeURIComponent(file.name)}`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/octet-stream", "Content-Length": String(file.size) },
+    body: data
+  });
+  if (response.ok) return response.json();
+
+  if (response.status === 422 && attempt < 4) {
+    await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+    return upload(file, attempt + 1);
+  }
+  const detail = await response.text();
+  throw new Error(`Upload failed for ${file.name}: ${response.status} ${detail}`);
+}
+
 let uploaded = 0;
 let bytes = 0;
+const tracks = [];
 
-for (const name of files) {
-  const full = path.join(musicDir, name);
-  const size = statSync(full).size;
-  let asset = assets.get(name) ?? assets.get(normalize(name));
+// Replace one file at a time so the cloud never loses more than a single
+// track while its new bytes are in flight.
+for (const file of files) {
+  let asset = file.asset;
   if (!asset) {
-    const bySameSize = bySize.get(size) || [];
-    asset = bySameSize.find((candidate) =>
-      candidate.name.startsWith(name.slice(0, 4))) || bySameSize[0];
-  }
-  if (!asset) {
-    const data = readFileSync(full);
-    const response = await fetch(`${uploadBase}?name=${encodeURIComponent(name)}`, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/octet-stream", "Content-Length": String(size) },
-      body: data
-    });
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`Upload failed for ${name}: ${response.status} ${detail}`);
-    }
-    asset = await response.json();
+    asset = await upload(file);
     uploaded += 1;
-    bytes += size;
-    console.log(`uploaded ${name} (${(size / 1048576).toFixed(1)} MB)`);
+    bytes += file.size;
+    console.log(`uploaded ${file.name} (${(file.size / 1048576).toFixed(1)} MB)`);
+  } else if (file.stale) {
+    await deleteAsset(asset);
+    asset = await upload(file);
+    uploaded += 1;
+    bytes += file.size;
+    console.log(`replaced ${file.name} (${(file.size / 1048576).toFixed(1)} MB)`);
   } else {
-    console.log(`present  ${name}`);
+    console.log(`present  ${file.name}`);
   }
-  tracks.push({ name, size: asset.size, url: asset.browser_download_url });
+  tracks.push({ name: file.name, size: asset.size, url: asset.browser_download_url });
+}
+
+for (const asset of removedAssets.values()) {
+  await deleteAsset(asset);
 }
 
 const manifest = {
   name: "Velvet Cloud",
-  version: 1,
+  version: 2,
   updated: new Date().toISOString().slice(0, 10),
   tracks
 };
@@ -109,7 +183,7 @@ writeFileSync(outManifest, JSON.stringify(manifest, null, 2));
 
 const oldManifest = (release.assets || []).find((asset) => asset.name === "manifest.json");
 if (oldManifest) {
-  const removed = await api(`https://api.github.com/repos/${owner}/${repo}/releases/assets/${oldManifest.id}`, { method: "DELETE" });
+  const removed = await api(`${deleteBase}/${oldManifest.id}`, { method: "DELETE" });
   if (removed.status >= 300 && removed.status !== 404) {
     throw new Error(`Could not replace manifest: ${removed.status}`);
   }

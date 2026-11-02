@@ -135,6 +135,14 @@ fun PlayerScreen(
         (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f)
     } else 0f
 
+    val bass = remember(bands) {
+        val count = minOf(8, bands.size)
+        if (count == 0) 0f else {
+            var sum = 0f
+            for (index in 0 until count) sum += bands[index]
+            (sum / count).coerceIn(0f, 1f)
+        }
+    }
     val vinylAngle = rememberVinylAngle(player.isPlaying)
     val backdropTransition = rememberInfiniteTransition(label = "backdrop")
     val backdropScale by backdropTransition.animateFloat(
@@ -209,7 +217,7 @@ fun PlayerScreen(
         VeinOverlay(
             color = accent.primary,
             modifier = Modifier.fillMaxSize(),
-            alpha = 0.10f,
+            alpha = 0.10f + if (player.isPlaying) bass * 0.10f else 0f,
             veinCount = 8,
             seed = 23
         )
@@ -284,8 +292,8 @@ fun PlayerScreen(
                     bright = accent.bright,
                     active = player.isPlaying,
                     sensitivity = spectrumGain,
-                    innerFraction = 0.382f,
-                    lengthFraction = 0.082f,
+                    innerFraction = 0.36f,
+                    lengthFraction = 0.075f,
                     modifier = Modifier
                         .fillMaxWidth(1f)
                         .widthIn(max = 460.dp)
@@ -293,8 +301,8 @@ fun PlayerScreen(
                 )
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.88f)
-                        .widthIn(max = 390.dp)
+                        .fillMaxWidth(0.78f)
+                        .widthIn(max = 346.dp)
                         .aspectRatio(1f),
                     contentAlignment = Alignment.Center
                 ) {
@@ -309,7 +317,7 @@ fun PlayerScreen(
                         uri = player.artUri,
                         color = player.trackColor,
                         modifier = Modifier
-                            .fillMaxWidth(0.82f)
+                            .fillMaxWidth(0.84f)
                             .aspectRatio(1f)
                             .shadow(
                                 elevation = 34.dp,

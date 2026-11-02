@@ -123,8 +123,16 @@ public sealed class SpectrumVisualizer : FrameworkElement
     private double InnerRadius(double minSide) =>
         minSide * Math.Clamp(InnerFraction, 0.05, 0.49);
 
-    private double MaxLength(double minSide) =>
-        minSide * Math.Clamp(LengthFraction, 0.01, 0.24);
+    private double MaxLength(double minSide)
+    {
+        // Sensitivity raises the ceiling, not just the input gain: quiet bars stay
+        // quiet, loud bars reach further out toward the tick ring.
+        var sensitivity = Math.Clamp(Sensitivity, 0.2, 3.0);
+        var reach = 1.0 + Math.Max(0.0, sensitivity - 1.0) * 0.9;
+        var baseLength = minSide * Math.Clamp(LengthFraction, 0.01, 0.24);
+        var available = minSide * 0.488 - InnerRadius(minSide);
+        return Math.Max(2.0, Math.Min(baseLength * reach, available));
+    }
 
     private static void OnActiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((SpectrumVisualizer)d).SyncLoop();

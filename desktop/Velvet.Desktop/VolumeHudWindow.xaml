@@ -1,50 +1,114 @@
 <Window x:Class="Velvet.Desktop.VolumeHudWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Velvet Volume" Width="286" Height="104" WindowStyle="None" AllowsTransparency="True"
+        Title="Velvet Volume" Width="344" Height="140" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
         ShowActivated="False" UseLayoutRounding="True" SnapsToDevicePixels="True"
         FontFamily="{StaticResource SansFont}">
-    <Border x:Name="Card" CornerRadius="26" BorderThickness="1"
-            BorderBrush="{DynamicResource AccentSoftBrush}">
-        <Border.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#FA15101F" Offset="0" />
-                <GradientStop Color="#FA08060F" Offset="1" />
-            </LinearGradientBrush>
-        </Border.Background>
-        <Border.Effect>
-            <DropShadowEffect Color="#000000" BlurRadius="26" ShadowDepth="6" Opacity="0.55" />
-        </Border.Effect>
+    <Grid Margin="18">
+        <Border x:Name="Card" CornerRadius="30" BorderThickness="1"
+                BorderBrush="{DynamicResource AccentSoftBrush}">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#FB171120" Offset="0" />
+                    <GradientStop Color="#FB0A0810" Offset="0.6" />
+                    <GradientStop Color="#FB07050C" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="34" ShadowDepth="9" Opacity="0.62" />
+            </Border.Effect>
 
-        <Grid Margin="20,15,20,14">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+            <Grid>
+                <Border CornerRadius="29" Background="{DynamicResource IslandVeinBrush}"
+                        Opacity="0.9" IsHitTestVisible="False" />
 
-            <DockPanel VerticalAlignment="Center">
-                <TextBlock Text="VELVET" FontSize="8" FontWeight="SemiBold"
-                           Foreground="{DynamicResource AccentBrightBrush}"
-                           VerticalAlignment="Center" />
-                <TextBlock x:Name="PercentText" Text="82%" FontFamily="{StaticResource SerifFont}"
-                           FontSize="21" HorizontalAlignment="Right" VerticalAlignment="Center" />
-            </DockPanel>
+                <Rectangle Height="1.4" VerticalAlignment="Top" Margin="40,1,40,0">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#00000000" Offset="0" />
+                            <GradientStop Color="#B36FB8FF" Offset="0.32" />
+                            <GradientStop Color="#D9FF6FB8" Offset="0.5" />
+                            <GradientStop Color="#B36FB8FF" Offset="0.68" />
+                            <GradientStop Color="#00000000" Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
 
-            <Grid Grid.Row="1" Height="7" Margin="0,11,0,9" VerticalAlignment="Center">
-                <Border CornerRadius="3.5" Background="#16FFFFFF" />
-                <Border x:Name="Fill" Width="0" HorizontalAlignment="Left" CornerRadius="3.5"
-                        Background="{DynamicResource AccentGradient}">
-                    <Border.Effect>
-                        <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="12"
-                                          ShadowDepth="0" Opacity="0.85" />
-                    </Border.Effect>
-                </Border>
+                <Grid Margin="22,14,22,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel>
+                        <Border Width="28" Height="28" CornerRadius="14"
+                                Background="{DynamicResource AccentSoftBrush}"
+                                BorderBrush="{DynamicResource AccentSoftBrush}" BorderThickness="1"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="SpeakerGlyph" Text="&#xE767;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="13" Foreground="{DynamicResource AccentBrightBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="VELVET" FontSize="9" FontWeight="SemiBold" Margin="10,0,0,0"
+                                   Foreground="{DynamicResource AccentBrightBrush}"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                    VerticalAlignment="Center">
+                            <TextBlock x:Name="PercentText" Text="82" FontFamily="{StaticResource SerifFont}"
+                                       FontSize="30" Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock x:Name="SuffixText" Text="%" FontSize="11" Margin="3,7,0,0"
+                                       Foreground="{StaticResource TextTertiaryBrush}" />
+                        </StackPanel>
+                    </DockPanel>
+
+                    <Grid x:Name="TrackHost" Grid.Row="1" Height="16" Margin="0,8,0,8"
+                          VerticalAlignment="Center">
+                        <Border Height="8" CornerRadius="4" Background="#1CFFFFFF"
+                                VerticalAlignment="Center" />
+                        <Border x:Name="Fill" Width="0" Height="8" CornerRadius="4"
+                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Background="{DynamicResource AccentGradient}">
+                            <Border.Effect>
+                                <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="14"
+                                                  ShadowDepth="0" Opacity="0.9" />
+                            </Border.Effect>
+                        </Border>
+                        <Ellipse Width="14" Height="14" HorizontalAlignment="Left"
+                                 VerticalAlignment="Center" Margin="-7,0,0,0">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush>
+                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                    <GradientStop Color="#FFF3EAF8" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                            <Ellipse.Effect>
+                                <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="16"
+                                                  ShadowDepth="0" Opacity="0.95" />
+                            </Ellipse.Effect>
+                            <Ellipse.RenderTransform>
+                                <TranslateTransform x:Name="KnobShift" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                    VerticalAlignment="Center" Margin="0,0,2,0">
+                            <Rectangle Width="1" Height="4" Fill="#26FFFFFF" Margin="0,0,4,0" />
+                            <Rectangle Width="1" Height="4" Fill="#26FFFFFF" Margin="0,0,4,0" />
+                            <Rectangle Width="1" Height="4" Fill="#26FFFFFF" />
+                        </StackPanel>
+                    </Grid>
+
+                    <DockPanel Grid.Row="2">
+                        <TextBlock x:Name="DetailText" Text="SYSTEM VOLUME" FontSize="8"
+                                   FontWeight="SemiBold" Foreground="{StaticResource TextTertiaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="MEDIA" FontSize="8" FontWeight="SemiBold"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource AccentBrightBrush}" />
+                    </DockPanel>
+                </Grid>
             </Grid>
-
-            <TextBlock Grid.Row="2" x:Name="DetailText" Text="SYSTEM VOLUME" FontSize="7.5"
-                       FontWeight="SemiBold" Foreground="{StaticResource TextTertiaryBrush}" />
-        </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

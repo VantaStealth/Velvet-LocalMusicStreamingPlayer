@@ -11,7 +11,7 @@ namespace Velvet.Desktop.Services;
 public static class CloudLibraryService
 {
     public const string ManifestUrl =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=3";
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=4";
 
     private const string Owner = "VantaStealth";
     private const string Repo = "Velvet-LocalMusicStreaming";

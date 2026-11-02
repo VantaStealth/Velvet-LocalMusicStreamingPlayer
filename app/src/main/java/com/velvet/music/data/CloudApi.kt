@@ -18,7 +18,7 @@ data class CloudEntry(
 object CloudApi {
 
     const val MANIFEST_URL =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=3"
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=4"
 
     private var cache: List<CloudEntry> = emptyList()
     private var cacheAt = 0L

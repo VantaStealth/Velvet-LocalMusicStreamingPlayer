@@ -141,8 +141,16 @@
                     <ColumnDefinition Width="352" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Left rail -->
-                <Border Grid.Column="0" Background="#7A09070E" BorderThickness="0">
+                <!-- Left rail: fades into the ambient light instead of cutting it with a hard edge -->
+                <Border Grid.Column="0" BorderThickness="0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#8C09070E" Offset="0" />
+                            <GradientStop Color="#5E09070E" Offset="0.64" />
+                            <GradientStop Color="#2409070E" Offset="0.86" />
+                            <GradientStop Color="#0009070E" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
                     <ScrollViewer VerticalScrollBarVisibility="Hidden">
                         <StackPanel Margin="20,16,20,22">
                             <StackPanel Orientation="Horizontal">
@@ -388,7 +396,8 @@
                                 <ColumnDefinition Width="300" />
                             </Grid.ColumnDefinitions>
 
-                            <Rectangle Grid.ColumnSpan="2" Margin="-22" RadiusX="24" RadiusY="24"
+                            <Rectangle x:Name="HeroVeins" Grid.ColumnSpan="2" Margin="-22" RadiusX="24"
+                                       RadiusY="24" Opacity="0.8"
                                        Fill="{DynamicResource HeroVeinBrush}" IsHitTestVisible="False" />
                             <Rectangle Grid.ColumnSpan="2" Margin="-22" RadiusX="24" RadiusY="24"
                                        IsHitTestVisible="False">
@@ -717,11 +726,11 @@
                                                              Active="{Binding IsPlaying}"
                                                              Sensitivity="{Binding VisualizerSensitivity}"
                                                              GlowBrush="{Binding CurrentGlowBrush}"
-                                                             InnerFraction="0.42" LengthFraction="0.05"
+                                                             InnerFraction="0.355" LengthFraction="0.055"
                                                              AccentBrush="{DynamicResource AccentBrush}"
                                                              BrightBrush="{DynamicResource AccentBrightBrush}" />
 
-                                <Ellipse Width="236" Height="236"
+                                <Ellipse Width="210" Height="210"
                                          StrokeThickness="1" StrokeDashArray="1 6"
                                          HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Ellipse.Stroke>
@@ -729,16 +738,16 @@
                                     </Ellipse.Stroke>
                                 </Ellipse>
 
-                                <Grid Width="226" Height="226" HorizontalAlignment="Center"
+                                <Grid Width="198" Height="198" HorizontalAlignment="Center"
                                       VerticalAlignment="Center">
-                                    <Border CornerRadius="113" Width="226" Height="226"
+                                    <Border CornerRadius="99" Width="198" Height="198"
                                             BorderBrush="#26FFFFFF" BorderThickness="1">
                                         <Border.Background>
                                             <ImageBrush ImageSource="{Binding CurrentCover, Converter={StaticResource CoverImage}}"
                                                         Stretch="UniformToFill" />
                                         </Border.Background>
                                     </Border>
-                                    <Border CornerRadius="113" BorderBrush="#40FFFFFF" BorderThickness="1"
+                                    <Border CornerRadius="99" BorderBrush="#40FFFFFF" BorderThickness="1"
                                             IsHitTestVisible="False">
                                         <Border.Background>
                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">

@@ -46,15 +46,21 @@ public partial class VolumeHudWindow : Window
     public void ShowLevel(float level, bool muted)
     {
         level = Math.Clamp(level, 0f, 1f);
-        PercentText.Text = muted ? "Muted" : $"{level * 100:0}%";
+        PercentText.Text = muted ? "MUTE" : $"{level * 100:0}";
+        SuffixText.Text = muted ? string.Empty : "%";
         DetailText.Text = muted ? "SYSTEM VOLUME · MUTED" : "SYSTEM VOLUME";
-        Fill.Width = Math.Max(0, 246 * level);
+        SpeakerGlyph.Text = muted ? "\uE74F" : "\uE767";
 
         if (!IsVisible) Show();
+        UpdateLayout();
+
+        var track = TrackHost.ActualWidth > 0 ? TrackHost.ActualWidth : 262;
+        Fill.Width = Math.Max(0, track * level);
+        KnobShift.X = Math.Max(0, track * level);
 
         var area = SystemParameters.WorkArea;
         Left = area.Left + (area.Width - Width) / 2;
-        Top = area.Bottom - Height - 28;
+        Top = area.Bottom - Height - 24;
 
         BeginAnimation(OpacityProperty, null);
         Opacity = 1;

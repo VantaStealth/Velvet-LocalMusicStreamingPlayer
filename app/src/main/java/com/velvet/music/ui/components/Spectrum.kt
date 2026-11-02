@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -63,6 +64,7 @@ fun SpectrumRing(
                 last = now
                 clock += dt
             }
+            if (!activeState.value) delay(80)
         }
     }
 
@@ -75,7 +77,14 @@ fun SpectrumRing(
         val gain = sensitivityState.value
         val playing = activeState.value
         val innerRadius = minSide * innerFraction
-        val maxLength = minSide * lengthFraction
+        // Raising sensitivity lifts the outer limit too, so the ring itself
+        // widens instead of only amplifying bands into the same ceiling.
+        val reach = 0.55f + 0.45f * gain.coerceIn(0.2f, 3f)
+        val available = (minSide * 0.487f - innerRadius).coerceAtLeast(minSide * 0.012f)
+        val maxLength = (minSide * lengthFraction * reach).coerceIn(
+            minSide * 0.008f,
+            available
+        )
         val step = (PI * 2 / bandCount).toFloat()
         val half = bandCount / 2
         val perHalf = SpectrumBandCount / half.toFloat()
@@ -213,6 +222,7 @@ fun SpectrumStrip(
                 last = now
                 clock += dt
             }
+            if (!activeState.value) delay(80)
         }
     }
 

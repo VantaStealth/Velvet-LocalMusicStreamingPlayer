@@ -15,17 +15,18 @@ Velvet is a local music player for Windows and Android, built around the files y
 | Platform | File | Requirements |
 | --- | --- | --- |
 | Windows 10 2004+ / 11 (x64) | [`Velvet.exe`](Velvet.exe) | None — self-contained, no .NET install |
-| Android 8.0+ | [`Velvet-1.6.apk`](Velvet-1.6.apk) | None |
+| Android 8.0+ | [`Velvet-1.7.apk`](Velvet-1.7.apk) | None |
 
 The Windows build is a single self-contained executable. It carries its own .NET runtime, WPF, and native libraries, so a fresh PC can double-click it and play. There is no separate dependency installer to run.
 
-## What's new in 1.6
+## What's new in 1.7
 
+- **Rich volume pill everywhere** — the Android accessibility overlay is back to the full Velvet design: liquid orb, large reading, glowing rail, and a MIX button that opens the complete stream mixer. It appears anywhere on the phone, even with nothing playing.
+- **Expandable visualizer** — raising sensitivity now widens the visualizer ring itself, so quiet rays and loud rays no longer share the same ceiling. The veins breathe with the bass.
+- **Snap line only while dragging** — the blue alignment line appears when the minimal island locks to the top centre during a drag, then disappears on release.
 - **Velvet Cloud is real** — a hosted library, not a folder on your PC. Both apps ship linked to it and there is no folder picker anywhere.
 - **System-wide volume takeover** — Velvet's glass volume HUD replaces the Windows flyout and the Android volume panel, even when music is paused.
-- **Blue snap line** — the minimal island shows a glowing blue line in the middle when it locks to the top centre of the screen.
-- **Minimal island resizing** — drag the right edge of the one-line island from 236 px to 620 px wide.
-- **Audio keeps playing over games** — starting PUBG Mobile, Tom Gold Rush, or any other app no longer pauses Velvet. Only an explicit pause or a headphone disconnect stops playback.
+- **Audio keeps playing over games** — starting a game or any other app no longer pauses Velvet. Only an explicit pause or a headphone disconnect stops playback.
 
 ## Velvet Cloud
 
@@ -35,19 +36,20 @@ Velvet Cloud lives on a public GitHub release, outside this repository:
 https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json
 ```
 
-- The manifest and all 31 tracks are hardcoded into both apps. There is nothing to configure.
+- The manifest and all 30 tracks are hardcoded into both apps. There is nothing to configure.
 - On launch, both apps notice which cloud tracks are missing from your selected folder and offer to download them.
 - Android can download from Velvet Cloud. There is no upload button on mobile, so the cloud cannot be filled by strangers.
 - Desktop can download and publish. Publishing uses your local GitHub credential (Git Credential Manager); `tools/publish-cloud.mjs` is the command-line path used to seed the release.
 - A partial download is deleted, not left behind as a broken track.
+- **The release must stay public.** Private GitHub release assets require an authenticated request, and the apps download anonymously. Making the release private would break cloud downloads for both apps. Velvet Cloud also contains copyrighted recordings, so public hosting can be taken down; keep your own copy of the library.
 
 ## Volume controller, everywhere
 
 **Windows.** While Velvet is running — including from the tray at boot — the volume keys are captured system-wide. Velvet steps the Windows media volume through Core Audio and draws its own glass HUD at the bottom of the screen. The stock Windows volume flyout is suppressed. Mute works too.
 
-**Android.** Open the **More** menu and choose **Volume keys takeover**. Enabling the Velvet accessibility service lets volume key presses open Velvet's volume rail anywhere on the phone: on the lock screen, inside games, or with nothing playing at all. The service only filters volume keys and never reads screen content.
+**Android.** Open the **More** menu and choose **Volume keys takeover**. Enabling the Velvet accessibility service lets volume key presses open the full Velvet volume pill anywhere on the phone: on the lock screen, inside games, or with nothing playing at all. Tap **MIX** on the pill for Media, Ring, Alerts, Alarm, Calls, and the Velvet channel. The service only filters volume keys and never reads screen content.
 
-Android exposes one shared media stream to every app, so the rail controls media volume for the device. The **Velvet channel** slider is separate and can push Velvet up to 150% so it sits above a game or video.
+Android exposes one shared media stream to every app, so the mixer controls device streams while the **Velvet channel** slider is separate; it can push Velvet up to 150% so it sits above a game or video.
 
 ## The floating island
 
@@ -55,7 +57,7 @@ Android exposes one shared media stream to every app, so the rail controls media
 - Double-click to switch between the full island and the one-line minimal island.
 - The minimal island shows cover, title, time, previous, play/pause, and next.
 - Drag its right edge to resize it horizontally.
-- A glowing blue centre line appears when the minimal island is snapped to the top middle.
+- While dragging, a glowing blue centre line appears when the minimal island is snapped to the top middle, then disappears when you release.
 - Resize, rotate, opacity, and minimal state are remembered between launches.
 
 ## On Android
@@ -134,7 +136,7 @@ The APK lands in `app/build/outputs/apk/debug/`.
 
 ### Publishing to Velvet Cloud
 
-`tools/publish-cloud.mjs` uploads new tracks to the `velvet-cloud` release, rebuilds `manifest.json`, and republishes it. It reads a GitHub token from Git Credential Manager; no token is stored in this repository.
+`tools/publish-cloud.mjs` reconciles the `velvet-cloud` release with your local library: it uploads new tracks, replaces changed ones, removes tracks you deleted, rebuilds `manifest.json`, and republishes it. It reads a GitHub token from Git Credential Manager; no token is stored in this repository.
 
 ```powershell
 node tools/publish-cloud.mjs

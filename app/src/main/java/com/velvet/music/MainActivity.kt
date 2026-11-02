@@ -71,12 +71,14 @@ import com.velvet.music.ui.theme.TextPrimary
 import com.velvet.music.ui.theme.TextTertiary
 import com.velvet.music.ui.theme.VelvetTheme
 import com.velvet.music.ui.volume.VolumeHudHost
+import com.velvet.music.volume.VolumeKeyService
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
     private val volumeKeys = MutableSharedFlow<Int>(extraBufferCapacity = 8)
+    private val serviceVolume = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,8 +87,13 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         setContent {
-            VelvetApp(viewModel, volumeKeys)
+            VelvetApp(viewModel, volumeKeys, serviceVolume.value)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        serviceVolume.value = VolumeKeyService.isEnabled(this)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -115,7 +122,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun VelvetApp(viewModel: MainViewModel, volumeKeys: MutableSharedFlow<Int>) {
+private fun VelvetApp(
+    viewModel: MainViewModel,
+    volumeKeys: MutableSharedFlow<Int>,
+    externalVolume: Boolean
+) {
     val accent by viewModel.accent.collectAsStateWithLifecycle()
 
     VelvetTheme(accent = accent) {
@@ -255,12 +266,14 @@ private fun VelvetApp(viewModel: MainViewModel, volumeKeys: MutableSharedFlow<In
                 )
             }
 
-            VolumeHudHost(
-                volumeKeyEvents = volumeKeys,
-                appVolume = appVolume,
-                onAppVolume = viewModel::setAppVolume,
-                modifier = Modifier.align(Alignment.CenterEnd)
-            )
+            if (!externalVolume) {
+                VolumeHudHost(
+                    volumeKeyEvents = volumeKeys,
+                    appVolume = appVolume,
+                    onAppVolume = viewModel::setAppVolume,
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                )
+            }
         }
     }
 }
