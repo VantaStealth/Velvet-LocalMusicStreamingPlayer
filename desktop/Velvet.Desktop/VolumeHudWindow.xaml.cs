@@ -54,7 +54,7 @@ public partial class VolumeHudWindow : Window
         if (!IsVisible) Show();
         UpdateLayout();
 
-        var track = TrackHost.ActualWidth > 0 ? TrackHost.ActualWidth : 262;
+        var track = TrackHost.ActualWidth > 0 ? TrackHost.ActualWidth : 244;
         Fill.Width = Math.Max(0, track * level);
         KnobShift.X = Math.Max(0, track * level);
 

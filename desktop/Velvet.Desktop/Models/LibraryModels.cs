@@ -40,6 +40,7 @@ public sealed class CloudTrack : System.ComponentModel.INotifyPropertyChanged
     public string Name { get; init; } = "";
     public string SizeText { get; init; } = "";
     public string Url { get; init; } = "";
+    public IReadOnlyList<string> Mirrors { get; init; } = Array.Empty<string>();
     public string LocalPath { get; init; } = "";
     public long SizeBytes { get; init; }
 
@@ -109,6 +110,7 @@ public sealed class AppSettings
     public RepeatMode Repeat { get; set; } = RepeatMode.Off;
     public string? LastTrackId { get; set; }
     public double VisualizerSensitivity { get; set; } = 1.35;
+    public bool Disco { get; set; }
     public bool IslandEnabled { get; set; }
     public double IslandLeft { get; set; } = double.NaN;
     public double IslandTop { get; set; } = double.NaN;

@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
 import kotlin.random.Random
@@ -94,6 +95,81 @@ fun AuroraBackdrop(
         )
     }
 }
+
+@Composable
+fun DiscoLights(
+    active: Boolean,
+    playing: Boolean,
+    bass: Float,
+    modifier: Modifier = Modifier
+) {
+    if (!active) return
+    val transition = rememberInfiniteTransition(label = "disco")
+    val drift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "discoDrift"
+    )
+    val colors = listOf(
+        Color(0xFFB026FF),
+        Color(0xFF00E5FF),
+        Color(0xFFFF2B8A),
+        Color(0xFFFFC44D)
+    )
+    val level = if (playing) bass.coerceIn(0f, 1f) else 0f
+    val spin = (drift * 2f * PI).toFloat()
+
+    Canvas(modifier) {
+        if (size.width <= 0f || size.height <= 0f) return@Canvas
+        val flash = colors[((drift * 8f).toInt()) % colors.size]
+        drawRect(flash.copy(alpha = 0.025f + level * 0.10f))
+
+        val spots = listOf(
+            Offset(
+                size.width * (0.18f + 0.30f * sin(spin).toFloat()),
+                size.height * (0.16f + 0.22f * cos(spin * 0.8f).toFloat())
+            ),
+            Offset(
+                size.width * (0.82f + 0.28f * cos(spin * 0.7f).toFloat()),
+                size.height * (0.20f + 0.20f * sin(spin * 0.9f).toFloat())
+            ),
+            Offset(
+                size.width * (0.50f + 0.34f * sin(spin * 0.5f + 1.3f).toFloat()),
+                size.height * (0.78f + 0.16f * cos(spin * 0.8f).toFloat())
+            )
+        )
+        spots.forEachIndexed { index, center ->
+            val radius = size.width * (0.34f + 0.05f * sin(spin * 0.6f + index).toFloat())
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        colors[index % colors.size].copy(alpha = 0.16f + level * 0.24f),
+                        Color.Transparent
+                    ),
+                    center = center,
+                    radius = radius
+                ),
+                radius = radius,
+                center = center
+            )
+        }
+
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    colors[(indexColor(drift) + 2) % colors.size].copy(alpha = 0.04f + level * 0.10f)
+                )
+            )
+        )
+    }
+}
+
+private fun indexColor(drift: Float): Int = ((drift * 8f).toInt()) % 4
 
 @Composable
 fun FilmGrain(modifier: Modifier = Modifier, alpha: Float = 0.045f) {

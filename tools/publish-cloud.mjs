@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash, createHmac } from "node:crypto";
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -14,6 +15,98 @@ const token = execFileSync("git", ["credential", "fill"], {
 }).split(/\r?\n/).find((line) => line.startsWith("password="))?.slice(9);
 
 if (!token) throw new Error("No GitHub credential available.");
+
+// Optional backup mirrors. Set VELVET_MIRRORS to a JSON array of S3-compatible
+// stores (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Credentials stay in the
+// environment and are never written to the manifest or either app.
+const mirrors = (() => {
+  const raw = process.env.VELVET_MIRRORS?.trim();
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error("VELVET_MIRRORS must be a JSON array.");
+  return parsed.map((entry, index) => {
+    const required = ["endpoint", "bucket", "region", "accessKey", "secretKey", "publicUrl"];
+    const missing = required.filter((key) => !entry?.[key]);
+    if (missing.length) throw new Error(`Mirror ${index} is missing ${missing.join(", ")}.`);
+    return {
+      endpoint: entry.endpoint.replace(/\/+$/, ""),
+      bucket: entry.bucket,
+      region: entry.region,
+      accessKey: entry.accessKey,
+      secretKey: entry.secretKey,
+      publicUrl: entry.publicUrl.replace(/\/+$/, ""),
+      prefix: (entry.prefix || "").replace(/^\/+|\/+$/g, "")
+    };
+  });
+})();
+
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+const hmac = (key, value) => createHmac("sha256", key).update(value).digest();
+const rfc3986 = (value) =>
+  encodeURIComponent(value).replace(/[!'()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+const encodeKey = (key) => key.split("/").map(rfc3986).join("/");
+
+function mirrorObject(mirror, name) {
+  const endpoint = new URL(mirror.endpoint);
+  const key = mirror.prefix ? `${mirror.prefix}/${name}` : name;
+  const canonicalUri = `${endpoint.pathname.replace(/\/+$/, "")}/${encodeURIComponent(mirror.bucket)}/${encodeKey(key)}`;
+  return { endpoint, key, canonicalUri, url: `${endpoint.origin}${canonicalUri}` };
+}
+
+function publicUrl(mirror, name) {
+  const key = mirror.prefix ? `${mirror.prefix}/${name}` : name;
+  return `${mirror.publicUrl}/${encodeKey(key)}`;
+}
+
+async function mirrorHas(mirror, file) {
+  try {
+    const response = await fetch(publicUrl(mirror, file.name), { method: "HEAD" });
+    return response.ok && Number(response.headers.get("content-length")) === file.size;
+  } catch {
+    return false;
+  }
+}
+
+async function mirrorPut(mirror, file) {
+  const data = readFileSync(file.full);
+  const { endpoint, canonicalUri, url } = mirrorObject(mirror, file.name);
+  const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = sha256(data);
+  const canonicalHeaders =
+    `host:${endpoint.host}\n` +
+    `x-amz-content-sha256:${payloadHash}\n` +
+    `x-amz-date:${amzDate}\n`;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalRequest =
+    `PUT\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const scope = `${dateStamp}/${mirror.region}/s3/aws4_request`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${sha256(canonicalRequest)}`;
+  const signingKey = hmac(
+    hmac(hmac(hmac(`AWS4${mirror.secretKey}`, dateStamp), mirror.region), "s3"),
+    "aws4_request"
+  );
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization:
+        `AWS4-HMAC-SHA256 Credential=${mirror.accessKey}/${scope}, ` +
+        `SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": amzDate,
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(file.size)
+    },
+    body: data
+  });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${(await response.text()).slice(0, 180)}`);
+  }
+}
 
 const headers = {
   Authorization: `Bearer ${token}`,
@@ -166,7 +259,25 @@ for (const file of files) {
   } else {
     console.log(`present  ${file.name}`);
   }
-  tracks.push({ name: file.name, size: asset.size, url: asset.browser_download_url });
+
+  const backupUrls = [];
+  for (const mirror of mirrors) {
+    try {
+      if (await mirrorHas(mirror, file)) {
+        console.log(`mirror   ${file.name} (already present)`);
+      } else {
+        await mirrorPut(mirror, file);
+        console.log(`mirror   ${file.name} (uploaded)`);
+      }
+      backupUrls.push(publicUrl(mirror, file.name));
+    } catch (error) {
+      console.warn(`mirror   ${file.name} failed: ${error.message}`);
+    }
+  }
+
+  const track = { name: file.name, size: asset.size, url: asset.browser_download_url };
+  if (backupUrls.length) track.mirrors = backupUrls;
+  tracks.push(track);
 }
 
 for (const asset of removedAssets.values()) {
@@ -175,7 +286,7 @@ for (const asset of removedAssets.values()) {
 
 const manifest = {
   name: "Velvet Cloud",
-  version: 2,
+  version: 3,
   updated: new Date().toISOString().slice(0, 10),
   tracks
 };

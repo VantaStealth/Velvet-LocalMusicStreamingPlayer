@@ -11,7 +11,16 @@ namespace Velvet.Desktop.Services;
 public static class CloudLibraryService
 {
     public const string ManifestUrl =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=4";
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=5";
+
+    // If the release asset is unavailable, the same manifest is mirrored in the
+    // repository itself so clients can still discover backup track sources.
+    private static readonly string[] ManifestSources =
+    {
+        ManifestUrl,
+        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=5",
+        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=5"
+    };
 
     private const string Owner = "VantaStealth";
     private const string Repo = "Velvet-LocalMusicStreaming";
@@ -30,34 +39,71 @@ public static class CloudLibraryService
     private static IReadOnlyList<CloudEntry>? _cache;
     private static DateTime _cacheAt;
 
-    public sealed record CloudEntry(string Name, string Url, long Size);
+    public sealed record CloudEntry(string Name, string Url, long Size)
+    {
+        public IReadOnlyList<string> Mirrors { get; init; } = Array.Empty<string>();
+
+        public IEnumerable<string> Sources =>
+            new[] { Url }.Concat(Mirrors).Where(source => !string.IsNullOrWhiteSpace(source));
+    }
 
     public static async Task<IReadOnlyList<CloudEntry>> GetCloudAsync(bool force, CancellationToken token)
     {
         if (!force && _cache is not null && DateTime.UtcNow - _cacheAt < TimeSpan.FromMinutes(2))
             return _cache;
 
-        using var response = await Http.GetAsync(ManifestUrl, HttpCompletionOption.ResponseHeadersRead, token);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(token);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: token);
-
-        var tracks = new List<CloudEntry>();
-        if (document.RootElement.TryGetProperty("tracks", out var array))
+        JsonDocument? document = null;
+        Exception? lastError = null;
+        foreach (var source in ManifestSources)
         {
-            foreach (var item in array.EnumerateArray())
+            try
             {
-                var name = item.GetProperty("name").GetString();
-                var url = item.GetProperty("url").GetString();
-                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) continue;
-                var size = item.TryGetProperty("size", out var sizeElement) ? sizeElement.GetInt64() : 0L;
-                tracks.Add(new CloudEntry(name, url, size));
+                using var response = await Http.GetAsync(source, HttpCompletionOption.ResponseHeadersRead, token);
+                response.EnsureSuccessStatusCode();
+                await using var stream = await response.Content.ReadAsStreamAsync(token);
+                document = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+                break;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                lastError = exception;
             }
         }
 
-        _cache = tracks;
-        _cacheAt = DateTime.UtcNow;
-        return tracks;
+        if (document is null)
+            throw lastError ?? new InvalidOperationException("Velvet Cloud could not be reached.");
+
+        using (document)
+        {
+            var tracks = new List<CloudEntry>();
+            if (document.RootElement.TryGetProperty("tracks", out var array))
+            {
+                foreach (var item in array.EnumerateArray())
+                {
+                    var name = item.GetProperty("name").GetString();
+                    var url = item.GetProperty("url").GetString();
+                    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) continue;
+                    var size = item.TryGetProperty("size", out var sizeElement) ? sizeElement.GetInt64() : 0L;
+
+                    var mirrors = new List<string>();
+                    if (item.TryGetProperty("mirrors", out var mirrorArray) &&
+                        mirrorArray.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var mirror in mirrorArray.EnumerateArray())
+                        {
+                            var value = mirror.GetString();
+                            if (!string.IsNullOrWhiteSpace(value)) mirrors.Add(value);
+                        }
+                    }
+
+                    tracks.Add(new CloudEntry(name, url, size) { Mirrors = mirrors });
+                }
+            }
+
+            _cache = tracks;
+            _cacheAt = DateTime.UtcNow;
+            return tracks;
+        }
     }
 
     public static IReadOnlyList<CloudEntry> MissingLocally(IReadOnlyList<CloudEntry> cloud, string folder)
@@ -91,26 +137,41 @@ public static class CloudLibraryService
         var destination = Path.Combine(folder, entry.Name);
         var temp = destination + ".part";
 
-        using var response = await Http.GetAsync(entry.Url, HttpCompletionOption.ResponseHeadersRead, token);
-        response.EnsureSuccessStatusCode();
-        await using var input = await response.Content.ReadAsStreamAsync(token);
-        await using (var output = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None,
-                         1 << 20, FileOptions.Asynchronous))
+        Exception? lastError = null;
+        foreach (var source in entry.Sources)
         {
-            var buffer = new byte[1 << 20];
-            long copied = 0;
-            int read;
-            while ((read = await input.ReadAsync(buffer, token)) > 0)
+            try
             {
-                await output.WriteAsync(buffer.AsMemory(0, read), token);
-                copied += read;
-                var total = entry.Size > 0 ? entry.Size : item.SizeBytes;
-                item.Progress = total <= 0 ? 0 : Math.Clamp((double)copied / total, 0, 1);
+                using var response = await Http.GetAsync(source, HttpCompletionOption.ResponseHeadersRead, token);
+                response.EnsureSuccessStatusCode();
+                await using var input = await response.Content.ReadAsStreamAsync(token);
+                await using (var output = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None,
+                                 1 << 20, FileOptions.Asynchronous))
+                {
+                    var buffer = new byte[1 << 20];
+                    long copied = 0;
+                    int read;
+                    while ((read = await input.ReadAsync(buffer, token)) > 0)
+                    {
+                        await output.WriteAsync(buffer.AsMemory(0, read), token);
+                        copied += read;
+                        var total = entry.Size > 0 ? entry.Size : item.SizeBytes;
+                        item.Progress = total <= 0 ? 0 : Math.Clamp((double)copied / total, 0, 1);
+                    }
+                }
+
+                File.Move(temp, destination, true);
+                item.Progress = 1;
+                return;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                lastError = exception;
+                try { File.Delete(temp); } catch { /* next source gets a clean file */ }
             }
         }
 
-        File.Move(temp, destination, true);
-        item.Progress = 1;
+        throw lastError ?? new InvalidOperationException($"No source is available for {entry.Name}.");
     }
 
     public static async Task<CloudEntry?> UploadAsync(string localPath, CloudTrack item,
@@ -165,9 +226,15 @@ public static class CloudLibraryService
         var manifest = JsonSerializer.Serialize(new
         {
             name = "Velvet Cloud",
-            version = 1,
+            version = 3,
             updated = DateTime.UtcNow.ToString("yyyy-MM-dd"),
-            tracks = entries.Select(entry => new { name = entry.Name, size = entry.Size, url = entry.Url })
+            tracks = entries.Select(entry => new
+            {
+                name = entry.Name,
+                size = entry.Size,
+                url = entry.Url,
+                mirrors = entry.Mirrors.Count > 0 ? entry.Mirrors.ToArray() : null
+            })
         });
 
         using var upload = new HttpRequestMessage(HttpMethod.Post,

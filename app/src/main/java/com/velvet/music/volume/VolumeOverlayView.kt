@@ -1,5 +1,6 @@
 package com.velvet.music.volume
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -14,8 +15,10 @@ import android.graphics.Typeface
 import android.media.AudioManager
 import android.view.MotionEvent
 import android.view.View
+import android.view.animation.LinearInterpolator
 import com.velvet.music.data.Prefs
 import java.util.Random
+import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -62,6 +65,8 @@ class VolumeOverlayView(context: Context) : View(context) {
     private var draggingMusic = false
     private var draggingKind = -1
     private var draggingIndex = -1
+    private var animator: ValueAnimator? = null
+    private var phase = 0f
 
     private val mixRect = RectF()
     private val railRect = RectF()
@@ -109,6 +114,28 @@ class VolumeOverlayView(context: Context) : View(context) {
     init {
         isClickable = true
         isFocusable = false
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (animator == null) {
+            animator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 3800L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    phase = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        animator?.cancel()
+        animator = null
+        super.onDetachedFromWindow()
     }
 
     fun refresh() {
@@ -507,7 +534,7 @@ class VolumeOverlayView(context: Context) : View(context) {
 
         cardPaint.shader = LinearGradient(
             card.left, card.top, card.left, card.bottom,
-            intArrayOf(0xF21A0F1F.toInt(), 0xF60C0810.toInt(), 0xF708060C.toInt()),
+            intArrayOf(0xCA1A0F1F.toInt(), 0xC80C0810.toInt(), 0xC408060C.toInt()),
             floatArrayOf(0f, 0.55f, 1f),
             Shader.TileMode.CLAMP
         )
@@ -574,17 +601,24 @@ class VolumeOverlayView(context: Context) : View(context) {
     }
 
     private fun drawOrb(canvas: Canvas, orb: RectF, radius: Float) {
-        cardPaint.color = 0xFF150D19.toInt()
+        cardPaint.color = 0xC6150D19.toInt()
         canvas.drawRoundRect(orb, radius, radius, cardPaint)
 
         val level = if (muted) 0f else fraction.coerceIn(0f, 1f)
+        val wavePhase = (phase * 2f * PI).toFloat()
+        val bubblePhase = phase
         val surface = orb.bottom - orb.height() * level
         val clip = Path().apply { addRoundRect(orb, radius, radius, Path.Direction.CW) }
         canvas.save()
         canvas.clipPath(clip)
 
-        canvas.drawRect(orb.left, surface, orb.right, orb.bottom, radialHaze(orb))
+        canvas.drawRect(orb.left, orb.top, orb.right, orb.bottom, radialHaze(orb))
         if (level > 0.001f) {
+            // The whole body sloshes a degree or two, the surface rolls, and the
+            // bubbles climb and pop so the jar never looks switched off.
+            canvas.save()
+            canvas.rotate(sin(phase * 2f * PI * 2f).toFloat() * 1.6f, orb.centerX(), orb.bottom)
+
             liquidPaint.shader = LinearGradient(
                 orb.left, surface, orb.left, orb.bottom,
                 intArrayOf(bright, accent, darken(accent, 0.32f)),
@@ -594,21 +628,41 @@ class VolumeOverlayView(context: Context) : View(context) {
             canvas.drawRect(orb.left, surface, orb.right, orb.bottom, liquidPaint)
             liquidPaint.shader = null
 
-            val wave = Path()
-            wave.moveTo(orb.left, surface)
+            val surfaceLine = Path()
+            surfaceLine.moveTo(orb.left, surface)
             var x = orb.left
             while (x <= orb.right) {
-                val y = surface + sin((x - orb.left) / orb.width() * 2.4f + 0.7f) * dp(1.6f)
-                wave.lineTo(x, y)
-                x += dp(3f)
+                val u = (x - orb.left) / orb.width()
+                val y = surface +
+                    sin(u * 4.6f + wavePhase) * dp(2.4f) +
+                    sin(u * 9.1f - wavePhase * 1.7f) * dp(1.1f)
+                surfaceLine.lineTo(x, y)
+                x += dp(2f)
             }
-            wavePaint.strokeWidth = dp(1f)
-            wavePaint.color = 0x59FFFFFF
-            canvas.drawPath(wave, wavePaint)
 
-            knobPaint.color = 0x3DFFFFFF
-            canvas.drawCircle(orb.centerX() + dp(7f), surface + dp(20f), dp(3f), knobPaint)
-            canvas.drawCircle(orb.centerX() - dp(5f), surface + dp(34f), dp(2f), knobPaint)
+            val wave = Path(surfaceLine).apply {
+                lineTo(orb.right, orb.bottom)
+                lineTo(orb.left, orb.bottom)
+                close()
+            }
+            canvas.drawPath(wave, liquidPaint.apply {
+                shader = LinearGradient(
+                    orb.left, surface, orb.left, orb.bottom,
+                    intArrayOf(bright.withAlpha(245), accent, darken(accent, 0.4f)),
+                    floatArrayOf(0f, 0.5f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+            })
+            liquidPaint.shader = null
+
+            wavePaint.strokeWidth = dp(1.3f)
+            wavePaint.color = 0x66FFFFFF
+            canvas.drawPath(surfaceLine, wavePaint)
+
+            drawBubbles(canvas, orb, surface, bubblePhase)
+            canvas.restore()
+        } else {
+            drawBubbles(canvas, orb, orb.bottom, bubblePhase)
         }
 
         canvas.drawRect(orb.left, orb.top, orb.right, orb.top + orb.height() * 0.42f, topShade(orb))
@@ -617,12 +671,46 @@ class VolumeOverlayView(context: Context) : View(context) {
         orbBorderPaint.strokeWidth = dp(1f)
         orbBorderPaint.color = 0x38FFFFFF
         canvas.drawRoundRect(orb, radius, radius, orbBorderPaint)
-        orbBorderPaint.strokeWidth = dp(1f)
         orbBorderPaint.color = accent.withAlpha(72)
         canvas.drawRoundRect(
             RectF(orb.left + dp(1f), orb.top + dp(1f), orb.right - dp(1f), orb.bottom - dp(1f)),
             radius, radius, orbBorderPaint
         )
+    }
+
+    private fun drawBubbles(canvas: Canvas, orb: RectF, surface: Float, phase: Float) {
+        val bottom = orb.bottom
+        val travel = (bottom - surface).coerceAtLeast(dp(8f))
+        for (index in 0 until 7) {
+            val progress = (phase + index / 7f) % 1f
+            val rise = progress * travel
+            val y = bottom - rise
+            if (y < surface + dp(1f) || y > bottom) continue
+            val alpha = (150 * (1f - progress * 0.65f)).roundToInt().coerceIn(24, 150)
+            val radius = dp(1.1f + (index % 3) * 0.7f)
+            val drift = sin(progress * 2f * PI.toFloat() * 2f + index) * dp(4.2f)
+            knobPaint.color = Color.argb(alpha, 255, 255, 255)
+            canvas.drawCircle(orb.centerX() + drift, y, radius, knobPaint)
+            knobPaint.color = Color.argb(alpha / 3, 255, 255, 255)
+            canvas.drawCircle(orb.centerX() + drift - radius * 0.4f, y - radius * 0.4f, radius * 0.4f, knobPaint)
+        }
+
+        // Popping ring at the surface just before each bubble restarts.
+        for (index in 0 until 7) {
+            val progress = (phase + index / 7f) % 1f
+            if (progress < 0.82f) continue
+            val pop = (progress - 0.82f) / 0.18f
+            val alpha = ((1f - pop) * 110).roundToInt().coerceIn(0, 110)
+            tickPaint.strokeWidth = dp(1f)
+            tickPaint.color = Color.argb(alpha, 255, 255, 255)
+            val drift = sin(progress * 2f * PI.toFloat() * 2f + index) * dp(4.2f)
+            canvas.drawCircle(
+                orb.centerX() + drift,
+                surface + dp(1f),
+                dp(1.2f + pop * 3.4f),
+                tickPaint
+            )
+        }
     }
 
     private fun radialHaze(orb: RectF): Paint {

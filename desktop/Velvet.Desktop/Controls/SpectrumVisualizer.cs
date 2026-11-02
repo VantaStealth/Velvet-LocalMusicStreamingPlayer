@@ -72,6 +72,9 @@ public sealed class SpectrumVisualizer : FrameworkElement
 
     public Func<float[]>? BandsProvider { get; set; }
 
+    /// <summary>Per-frame low-band energy, already attack/release smoothed.</summary>
+    public event Action<float>? BassUpdated;
+
     public bool Active
     {
         get => (bool)GetValue(ActiveProperty);
@@ -199,6 +202,7 @@ public sealed class SpectrumVisualizer : FrameworkElement
         _bass = 0;
         for (var i = 0; i < 8; i++) _bass += _values[i];
         _bass /= 8;
+        BassUpdated?.Invoke((float)_bass);
 
         var total = 0.0;
         for (var i = 0; i < _values.Length; i++) total += _values[i];

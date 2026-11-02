@@ -12,13 +12,25 @@ import java.net.URI
 data class CloudEntry(
     val name: String,
     val url: String,
-    val sizeBytes: Long
-)
+    val sizeBytes: Long,
+    val mirrors: List<String> = emptyList()
+) {
+    val sources: List<String>
+        get() = (listOf(url) + mirrors).filter { it.isNotBlank() }
+}
 
 object CloudApi {
 
     const val MANIFEST_URL =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=4"
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=5"
+
+    // The same manifest is committed to the repository, so a removed release
+    // asset does not strand clients that still have working backup mirrors.
+    private val manifestUrls = listOf(
+        MANIFEST_URL,
+        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=5",
+        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=5"
+    )
 
     private var cache: List<CloudEntry> = emptyList()
     private var cacheAt = 0L
@@ -30,35 +42,46 @@ object CloudApi {
         if (!force && cache.isNotEmpty() && System.currentTimeMillis() - cacheAt < 120_000L) {
             return@withContext cache
         }
-        val connection = (URI(MANIFEST_URL).toURL().openConnection() as HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 30_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "Velvet-Mobile")
-            setRequestProperty("Accept", "application/json")
-        }
-        try {
-            if (connection.responseCode !in 200..299) {
-                error("Velvet Cloud answered ${connection.responseCode}.")
+
+        var lastError: Exception? = null
+        for (source in manifestUrls) {
+            val connection = (URI(source).toURL().openConnection() as HttpURLConnection).apply {
+                connectTimeout = 20_000
+                readTimeout = 30_000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Velvet-Mobile")
+                setRequestProperty("Accept", "application/json")
             }
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            val root = JSONObject(body)
-            val tracks = root.optJSONArray("tracks") ?: return@withContext emptyList()
-            val entries = buildList {
-                for (index in 0 until tracks.length()) {
-                    val item = tracks.optJSONObject(index) ?: continue
-                    val name = item.optString("name")
-                    val url = item.optString("url")
-                    if (name.isBlank() || url.isBlank()) continue
-                    add(CloudEntry(name, url, item.optLong("size", 0L)))
+            try {
+                if (connection.responseCode !in 200..299) {
+                    error("Velvet Cloud answered ${connection.responseCode}.")
                 }
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                val tracks = JSONObject(body).optJSONArray("tracks") ?: continue
+                val entries = buildList {
+                    for (index in 0 until tracks.length()) {
+                        val item = tracks.optJSONObject(index) ?: continue
+                        val name = item.optString("name")
+                        val url = item.optString("url")
+                        if (name.isBlank() || url.isBlank()) continue
+                        val mirrors = item.optJSONArray("mirrors")?.let { array ->
+                            (0 until array.length()).mapNotNull { position ->
+                                array.optString(position).takeIf { it.isNotBlank() }
+                            }
+                        }.orEmpty()
+                        add(CloudEntry(name, url, item.optLong("size", 0L), mirrors))
+                    }
+                }
+                cache = entries
+                cacheAt = System.currentTimeMillis()
+                return@withContext entries
+            } catch (exception: Exception) {
+                lastError = exception
+            } finally {
+                connection.disconnect()
             }
-            cache = entries
-            cacheAt = System.currentTimeMillis()
-            entries
-        } finally {
-            connection.disconnect()
         }
+        throw lastError ?: IllegalStateException("Velvet Cloud is unreachable right now.")
     }
 
     suspend fun download(
@@ -68,50 +91,59 @@ object CloudApi {
         onProgress: (Float) -> Unit
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val destination = DocumentFile.fromTreeUri(context, destTreeUri)
-                ?: error("Your music folder is not available any more.")
             val mime = android.webkit.MimeTypeMap.getSingleton()
                 .getMimeTypeFromExtension(entry.name.substringAfterLast('.', "").lowercase())
                 ?: "audio/mpeg"
-            val target = destination.findFile(entry.name) ?: destination.createFile(mime, entry.name)
-                ?: error("Could not create ${entry.name}.")
+            var lastError: Exception? = null
 
-            val connection = (URI(entry.url).toURL().openConnection() as HttpURLConnection).apply {
-                connectTimeout = 20_000
-                readTimeout = 60_000
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "Velvet-Mobile")
-            }
-            try {
-                if (connection.responseCode !in 200..299) {
-                    error("Velvet Cloud answered ${connection.responseCode}.")
-                }
-                val total = entry.sizeBytes.takeIf { it > 0 } ?: connection.contentLengthLong
-                connection.inputStream.use { source ->
-                    val output = runCatching {
-                        context.contentResolver.openOutputStream(target.uri, "wt")
-                    }.getOrNull() ?: context.contentResolver.openOutputStream(target.uri, "w")
-                        ?: error("Could not write ${entry.name}.")
-                    output.use { sink ->
-                        val buffer = ByteArray(256 * 1024)
-                        var done = 0L
-                        while (true) {
-                            val read = source.read(buffer)
-                            if (read <= 0) break
-                            sink.write(buffer, 0, read)
-                            done += read
-                            if (total > 0) onProgress((done.toFloat() / total).coerceIn(0f, 1f))
-                        }
-                        sink.flush()
+            for (source in entry.sources) {
+                var connection: HttpURLConnection? = null
+                val destination = DocumentFile.fromTreeUri(context, destTreeUri)
+                    ?: error("Your music folder is not available any more.")
+                val target = destination.findFile(entry.name)
+                    ?: destination.createFile(mime, entry.name)
+                    ?: error("Could not create ${entry.name}.")
+
+                try {
+                    connection = (URI(source).toURL().openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 20_000
+                        readTimeout = 60_000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "Velvet-Mobile")
                     }
+                    if (connection.responseCode !in 200..299) {
+                        error("Velvet Cloud answered ${connection.responseCode}.")
+                    }
+                    val total = entry.sizeBytes.takeIf { it > 0 } ?: connection.contentLengthLong
+                    connection.inputStream.use { input ->
+                        val output = runCatching {
+                            context.contentResolver.openOutputStream(target.uri, "wt")
+                        }.getOrNull() ?: context.contentResolver.openOutputStream(target.uri, "w")
+                            ?: error("Could not write ${entry.name}.")
+                        output.use { sink ->
+                            val buffer = ByteArray(256 * 1024)
+                            var done = 0L
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                sink.write(buffer, 0, read)
+                                done += read
+                                if (total > 0) onProgress((done.toFloat() / total).coerceIn(0f, 1f))
+                            }
+                            sink.flush()
+                        }
+                    }
+                    onProgress(1f)
+                    return@runCatching
+                } catch (exception: Exception) {
+                    lastError = exception
+                    runCatching { target.delete() }
+                } finally {
+                    connection?.disconnect()
                 }
-                onProgress(1f)
-            } catch (error: Exception) {
-                runCatching { target.delete() }
-                throw error
-            } finally {
-                connection.disconnect()
             }
+
+            throw lastError ?: IllegalStateException("No source is available for ${entry.name}.")
         }
     }
 }

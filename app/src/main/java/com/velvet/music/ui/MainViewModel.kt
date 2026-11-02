@@ -58,6 +58,7 @@ data class CloudItem(
     val name: String,
     val url: String,
     val sizeBytes: Long,
+    val mirrors: List<String> = emptyList(),
     val selected: Boolean = true,
     val progress: Float = 0f,
     val status: String = "",
@@ -486,7 +487,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _cloud.update { state ->
                     state.copy(
                         loading = false,
-                        items = entries.map { CloudItem(it.name, it.url, it.sizeBytes) }
+                        items = entries.map { CloudItem(it.name, it.url, it.sizeBytes, it.mirrors) }
                     )
                 }
             }.onFailure { error ->
@@ -516,7 +517,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val result = CloudApi.download(
                     context = app,
-                    entry = CloudEntry(item.name, item.url, item.sizeBytes),
+                    entry = CloudEntry(item.name, item.url, item.sizeBytes, item.mirrors),
                     destTreeUri = Uri.parse(libraryUri)
                 ) { fraction ->
                     updateCloudItem(item.url) {

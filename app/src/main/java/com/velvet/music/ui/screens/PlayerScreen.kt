@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -82,12 +83,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import com.velvet.music.R
+import com.velvet.music.data.LyricLine
+import com.velvet.music.data.Lyrics
 import com.velvet.music.ui.PlayerState
 import com.velvet.music.ui.QueueEntry
 import com.velvet.music.ui.components.Artwork
 import com.velvet.music.ui.components.AuroraBackdrop
 import com.velvet.music.ui.components.BreathingGlow
 import com.velvet.music.ui.components.CircleIconButton
+import com.velvet.music.ui.components.DiscoLights
 import com.velvet.music.ui.components.EqualizerBars
 import com.velvet.music.ui.components.FilmGrain
 import com.velvet.music.ui.components.GlowSlider
@@ -105,7 +109,9 @@ import com.velvet.music.ui.theme.Surface1
 import com.velvet.music.ui.theme.TextPrimary
 import com.velvet.music.ui.theme.TextSecondary
 import com.velvet.music.ui.theme.TextTertiary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,8 +134,23 @@ fun PlayerScreen(
 ) {
     val accent = LocalAccent.current
     var queueVisible by remember { mutableStateOf(false) }
+    var disco by remember { mutableStateOf(false) }
+    var lyricsVisible by remember { mutableStateOf(false) }
+    var lyricLines by remember { mutableStateOf<List<LyricLine>>(emptyList()) }
+    var lyricMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(player.mediaId) {
+        lyricLines = emptyList()
+        lyricMessage = null
+        if (player.mediaId.isNotBlank()) {
+            val loaded = withContext(Dispatchers.IO) { Lyrics.load(context, player.mediaId) }
+            lyricLines = loaded
+            if (loaded.isEmpty()) lyricMessage = "No .lrc file beside this track yet."
+        }
+    }
 
     val fraction = if (player.durationMs > 0L) {
         (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f)
@@ -220,6 +241,12 @@ fun PlayerScreen(
             alpha = 0.10f + if (player.isPlaying) bass * 0.10f else 0f,
             veinCount = 8,
             seed = 23
+        )
+        DiscoLights(
+            active = disco,
+            playing = player.isPlaying,
+            bass = bass,
+            modifier = Modifier.fillMaxSize()
         )
 
         Column(
@@ -467,6 +494,68 @@ fun PlayerScreen(
                     contentDescription = "Repeat",
                     onClick = onCycleRepeat,
                     badge = if (player.repeatMode == Player.REPEAT_MODE_ONE) "1" else null
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (disco) accent.primary.copy(alpha = 0.20f)
+                            else Color.White.copy(alpha = 0.05f)
+                        )
+                        .border(
+                            1.dp,
+                            if (disco) accent.primary.copy(alpha = 0.55f) else Hairline,
+                            RoundedCornerShape(50)
+                        )
+                        .clickable { disco = !disco }
+                        .padding(horizontal = 18.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (disco) "DISCO ON" else "DISCO",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                        color = if (disco) accent.bright else TextSecondary
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (lyricsVisible) accent.primary.copy(alpha = 0.20f)
+                            else Color.White.copy(alpha = 0.05f)
+                        )
+                        .border(
+                            1.dp,
+                            if (lyricsVisible) accent.primary.copy(alpha = 0.55f) else Hairline,
+                            RoundedCornerShape(50)
+                        )
+                        .clickable { lyricsVisible = !lyricsVisible }
+                        .padding(horizontal = 18.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "LYRICS",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                        color = if (lyricsVisible) accent.bright else TextSecondary
+                    )
+                }
+            }
+
+            if (lyricsVisible) {
+                Spacer(Modifier.height(12.dp))
+                LyricsPane(
+                    lines = lyricLines,
+                    positionMs = player.positionMs,
+                    message = lyricMessage,
+                    bright = accent.bright,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -798,6 +887,58 @@ private fun QueueRow(
                 color = accent.primary,
                 barWidth = 2.dp
             )
+        }
+    }
+}
+
+@Composable
+private fun LyricsPane(
+    lines: List<LyricLine>,
+    positionMs: Long,
+    message: String?,
+    bright: Color,
+    modifier: Modifier = Modifier
+) {
+    val active = if (lines.isEmpty()) {
+        -1
+    } else {
+        lines.indexOfLast { it.timeMs <= positionMs }.coerceAtLeast(0)
+    }
+    val start = if (lines.size <= 5) 0 else (active - 2).coerceIn(0, lines.size - 5)
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = 0.045f))
+            .border(1.dp, Hairline, RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (lines.isEmpty()) {
+            Text(
+                text = message ?: "No lyrics for this track.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextTertiary,
+                textAlign = TextAlign.Center
+            )
+        } else {
+            lines.drop(start).take(5).forEachIndexed { offset, line ->
+                val current = start + offset == active
+                Text(
+                    text = line.text,
+                    style = if (current) {
+                        MaterialTheme.typography.titleMedium
+                    } else {
+                        MaterialTheme.typography.bodySmall
+                    },
+                    color = if (current) bright else TextTertiary,
+                    fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp)
+                )
+            }
         }
     }
 }

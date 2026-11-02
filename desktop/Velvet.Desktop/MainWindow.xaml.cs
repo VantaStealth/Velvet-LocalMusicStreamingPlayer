@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -43,7 +44,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private IslandWindow? _island;
     private double _visualizerSensitivity = 1.35;
+    private double _veinLevel = 0.72;
+    private bool _disco;
+    private float _discoPhase;
+    private int _discoColor;
+    private DateTime _lastDiscoColor;
+    private static readonly Color[] DiscoColors =
+    {
+        Color.FromRgb(0xB0, 0x26, 0xFF),
+        Color.FromRgb(0x00, 0xE5, 0xFF),
+        Color.FromRgb(0xFF, 0x2B, 0x8A),
+        Color.FromRgb(0xFF, 0xC4, 0x4D),
+        Color.FromRgb(0xFF, 0x3B, 0x3B)
+    };
     private string _islandButtonText = "Open floating island";
+    private List<(TimeSpan At, string Text)> _lyrics = new();
 
     private FileSystemWatcher? _watcher;
     private CancellationTokenSource? _scanCts;
@@ -124,6 +139,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _repeatOneActive = _settings.Repeat == RepeatMode.One;
         _greeting = BuildGreeting();
         _visualizerSensitivity = Math.Clamp(_settings.VisualizerSensitivity, 0.4, 3);
+        _disco = _settings.Disco;
         Spectrum.BandsProvider = ReadSpectrum;
 
         _engine.TrackChanged += OnTrackChanged;
@@ -154,6 +170,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
 
         DataContext = this;
+        Spectrum.BassUpdated += OnBassUpdated;
         Loaded += OnLoaded;
         Closing += OnClosing;
         StateChanged += (_, _) =>
@@ -172,6 +189,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void SyncActivity()
     {
         if (_closing) return;
+        if (!_engine.IsPlaying) ResetVeinBreath();
 
         var active = IsVisible && WindowState != WindowState.Minimized;
         if (!active)
@@ -179,6 +197,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _ticker.Stop();
             StopAccentSpin();
             UpdateSpectrumDemand();
+            ApplyDiscoState();
             return;
         }
 
@@ -186,6 +205,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _ticker.Start();
         if (IsActive) StartAccentSpin();
         UpdateSpectrumDemand();
+        ApplyDiscoState();
     }
 
     private void UpdateSpectrumDemand()
@@ -346,6 +366,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     public string VisualizerSensitivityLabel => $"{_visualizerSensitivity:0.0}x";
+    public string DiscoButtonText => _disco ? "Disco mode · On" : "Disco mode · Off";
     public string IslandButtonText { get => _islandButtonText; private set => Set(ref _islandButtonText, value); }
 
     public string SearchText
@@ -525,6 +546,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private void ToggleIsland_Click(object sender, RoutedEventArgs e) => ToggleIsland();
+
+    private void ToggleDisco_Click(object sender, RoutedEventArgs e)
+    {
+        _disco = !_disco;
+        _settings.Disco = _disco;
+        OnPropertyChanged(nameof(DiscoButtonText));
+        ApplyDiscoState();
+        ScheduleSettingsSave();
+    }
+
+    private void ApplyDiscoState()
+    {
+        var on = _disco && _engine.IsPlaying && IsVisible && WindowState != WindowState.Minimized;
+        DiscoStage.Opacity = on ? 1 : 0;
+        if (on)
+        {
+            UpdateLyricLine();
+            return;
+        }
+        DiscoFlash.Opacity = 0;
+        DiscoA.Opacity = 0;
+        DiscoB.Opacity = 0;
+        DiscoC.Opacity = 0;
+        DiscoD.Opacity = 0;
+    }
 
     private void ToggleIsland()
     {
@@ -749,8 +795,65 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdateShuffleState();
         UpdateRepeatState();
         UpdateSeekFromEngine();
+        LoadLyrics(track.Path);
         PersistSettings();
         _ = RefreshSessionAsync();
+    }
+
+    private void LoadLyrics(string path)
+    {
+        _lyrics = new List<(TimeSpan, string)>();
+        try
+        {
+            var lrc = Path.ChangeExtension(path, ".lrc");
+            if (File.Exists(lrc))
+            {
+                foreach (var raw in File.ReadAllLines(lrc))
+                {
+                    var stamps = Regex.Matches(raw, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]");
+                    if (stamps.Count == 0) continue;
+                    var text = Regex.Replace(raw, @"\[[^\]]*]", "").Trim();
+                    if (text.Length == 0) continue;
+                    foreach (Match stamp in stamps)
+                    {
+                        var minutes = int.Parse(stamp.Groups[1].Value);
+                        var seconds = int.Parse(stamp.Groups[2].Value);
+                        var fraction = stamp.Groups[3].Success
+                            ? stamp.Groups[3].Value.PadRight(3, '0')[..3]
+                            : "000";
+                        var at = TimeSpan.FromMilliseconds(
+                            minutes * 60_000 + seconds * 1_000 + int.Parse(fraction));
+                        _lyrics.Add((at, text));
+                    }
+                }
+                _lyrics.Sort((left, right) => left.At.CompareTo(right.At));
+            }
+        }
+        catch
+        {
+            _lyrics = new List<(TimeSpan, string)>();
+        }
+        UpdateLyricLine();
+    }
+
+    private void UpdateLyricLine()
+    {
+        if (_lyrics.Count == 0)
+        {
+            DiscoLyricText.Text = "";
+            DiscoLyricNext.Text = "";
+            return;
+        }
+
+        var index = -1;
+        for (var i = 0; i < _lyrics.Count; i++)
+        {
+            if (_lyrics[i].At > _engine.Position) break;
+            index = i;
+        }
+
+        DiscoLyricText.Text = index >= 0 ? _lyrics[index].Text : "";
+        DiscoLyricNext.Text = index + 1 < _lyrics.Count ? _lyrics[index + 1].Text : "";
     }
 
     private void OnEngineStateChanged()
@@ -809,7 +912,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Ticker_Tick(object? sender, EventArgs e)
     {
         UpdateSpectrumLines();
-        UpdateVeinBreath();
         if (!_engine.HasTrack) return;
         if (_scrubbing || DateTime.UtcNow < _seekHoldUntil)
         {
@@ -823,28 +925,50 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SeekValue = duration > 1
             ? Math.Clamp(_engine.Position.TotalSeconds / duration, 0, 1)
             : 0;
+        if (_disco) UpdateLyricLine();
         if (_engine.IsPlaying) _engine.UpdateTimeline();
     }
 
-    private void UpdateVeinBreath()
+    private void OnBassUpdated(float bass)
     {
-        if (!_engine.IsPlaying)
+        if (!_engine.IsPlaying) return;
+
+        // The spectrum hands us the already-smoothed low band every rendered
+        // frame, so the veins follow the kick instead of sampling it at 5 Hz.
+        var target = Math.Clamp(0.62 + bass * 0.62, 0.62, 1.0);
+        _veinLevel += (target - _veinLevel) * 0.38;
+        HeroVeins.Opacity = _veinLevel;
+
+        if (!_disco) return;
+        _discoPhase = (_discoPhase + 0.0042f) % 1f;
+        var angle = _discoPhase * Math.PI * 2;
+        DiscoATransform.X = Math.Sin(angle * 0.8) * 150;
+        DiscoATransform.Y = Math.Cos(angle * 0.6) * 90;
+        DiscoBTransform.X = Math.Cos(angle * 0.7) * 130;
+        DiscoBTransform.Y = Math.Sin(angle * 0.9) * 110;
+        DiscoCTransform.X = Math.Sin(angle * 0.5 + 1.3) * 160;
+        DiscoCTransform.Y = Math.Cos(angle * 0.8) * 70;
+        DiscoDTransform.X = Math.Cos(angle * 0.9 + 2.1) * 120;
+        DiscoDTransform.Y = Math.Sin(angle * 0.6) * 80;
+
+        DiscoA.Opacity = 0.28 + bass * 0.55;
+        DiscoB.Opacity = 0.24 + bass * 0.48;
+        DiscoC.Opacity = 0.22 + bass * 0.52;
+        DiscoD.Opacity = 0.18 + bass * 0.42;
+
+        if (bass > 0.48f && DateTime.UtcNow - _lastDiscoColor > TimeSpan.FromMilliseconds(210))
         {
-            HeroVeins.BeginAnimation(OpacityProperty, null);
-            HeroVeins.Opacity = 0.72;
-            return;
+            _lastDiscoColor = DateTime.UtcNow;
+            _discoColor = (_discoColor + 1) % DiscoColors.Length;
+            DiscoFlashBrush.Color = DiscoColors[_discoColor];
         }
+        DiscoFlash.Opacity = bass * 0.16;
+    }
 
-        var bass = 0f;
-        for (var band = 0; band < 8; band++) bass += _spectrumBuffer[band];
-        bass /= 8f;
-
-        var target = Math.Clamp(0.58 + bass * 1.15, 0.58, 1.0);
-        HeroVeins.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(target, TimeSpan.FromMilliseconds(180))
-            {
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            });
+    private void ResetVeinBreath()
+    {
+        _veinLevel = 0.72;
+        HeroVeins.Opacity = 0.72;
     }
 
     private static string FormatTime(TimeSpan value)
@@ -1088,7 +1212,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _cloudUpload = upload;
         _cloudItems.Clear();
         CloudTitle = upload ? "Publish to Velvet Cloud" : "Velvet Cloud";
-        CloudPathText = "velvet-cloud  ·  hosted on GitHub";
+        CloudPathText = "velvet-cloud  ·  synced library";
         CloudSummary = "Reading Velvet Cloud…";
         CloudActionText = upload ? "Publish selected" : "Download selected";
         IsCloudOverlayOpen = true;
@@ -1122,7 +1246,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         Name = entry.Name,
                         SizeText = FormatSize(entry.Size),
                         SizeBytes = entry.Size,
-                        Url = entry.Url
+                        Url = entry.Url,
+                        Mirrors = entry.Mirrors
                     });
                 }
             }
@@ -1181,7 +1306,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 foreach (var item in selected)
                 {
                     item.Status = "Downloading";
-                    var entry = new CloudLibraryService.CloudEntry(item.Name, item.Url, item.SizeBytes);
+                    var entry = new CloudLibraryService.CloudEntry(item.Name, item.Url, item.SizeBytes)
+                    {
+                        Mirrors = item.Mirrors
+                    };
                     await CloudLibraryService.DownloadAsync(entry, _settings.Folder!, item,
                         CancellationToken.None);
                     item.Status = "Done";
