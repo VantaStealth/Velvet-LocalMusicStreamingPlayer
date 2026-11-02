@@ -79,6 +79,7 @@ class LibraryRepository(context: Context) {
         if (total == 0) return@withContext emptyList()
 
         val previous = loadLibrary().associateBy { it.uri }
+        val catalog = CloudApi.catalog(appContext)
         val done = AtomicInteger(0)
         val gate = Semaphore(4)
 
@@ -91,9 +92,10 @@ class LibraryRepository(context: Context) {
                             track.artPath == null || File(track.artPath).exists()
                         }
                         val track = cached ?: extractTrack(doc)
+                        val resolved = track?.let { applyCloudTags(it, doc.name, catalog) }
                         val count = done.incrementAndGet()
-                        onProgress(count, total, doc.name ?: track?.title ?: "")
-                        track
+                        onProgress(count, total, doc.name ?: resolved?.title ?: "")
+                        resolved
                     }
                 }
             }.awaitAll()
@@ -121,6 +123,48 @@ class LibraryRepository(context: Context) {
         }
         saveLibrary(updated)
         updated
+    }
+
+    /**
+     * Some devices hand back no tags for a SAF document, which left cloud
+     * tracks labelled "Unknown artist" even though the manifest knows better.
+     * A freshly saved catalogue is applied without waiting for the next scan.
+     */
+    suspend fun retagFromCatalog(tracks: List<Track>): List<Track> = withContext(Dispatchers.IO) {
+        if (tracks.isEmpty()) return@withContext tracks
+        val catalog = CloudApi.catalog(appContext)
+        if (catalog.isEmpty()) return@withContext tracks
+        val updated = tracks.map { track ->
+            val name = runCatching {
+                Uri.parse(track.uri).lastPathSegment?.substringAfterLast('/')
+            }.getOrNull()
+            applyCloudTags(track, name, catalog)
+        }
+        if (updated != tracks) saveLibrary(updated)
+        updated
+    }
+
+    private fun applyCloudTags(
+        track: Track,
+        fileName: String?,
+        catalog: Map<String, CloudEntry>
+    ): Track {
+        val name = fileName ?: return track
+        val entry = catalog[CloudApi.key(name)] ?: return track
+        val unknownArtist = track.artist.isBlank() ||
+            track.artist.equals("Unknown artist", ignoreCase = true)
+        val rawTitle = name.substringBeforeLast('.').trim()
+        val titleIsRaw = track.title.isBlank() ||
+            track.title.equals(rawTitle, ignoreCase = true) ||
+            track.title.equals(name, ignoreCase = true)
+        if (!unknownArtist && !titleIsRaw) return track
+        return track.copy(
+            title = if (titleIsRaw && !entry.title.isNullOrBlank()) entry.title else track.title,
+            artist = if (unknownArtist && !entry.artist.isNullOrBlank()) entry.artist else track.artist,
+            album = if (track.album.isBlank() ||
+                track.album.equals("Unknown album", ignoreCase = true)
+            ) entry.album ?: track.album else track.album
+        )
     }
 
     private fun ensureCover(track: Track): Track {

@@ -62,6 +62,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -115,6 +116,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -938,16 +940,17 @@ private fun LyricsPane(
     modifier: Modifier = Modifier
 ) {
     val activeIndex = remember { mutableIntStateOf(-1) }
+    val reported = rememberUpdatedState(positionMs)
 
-    // The clock is re-anchored to the player every time its reported position
-    // changes, so a seek (or any skip) moves the lyrics immediately. Between
-    // reports the frame clock keeps lines advancing smoothly.
-    LaunchedEffect(lines, playing, positionMs) {
+    // Run one smooth clock and only re-anchor when the player actually jumps
+    // (seek, skip or track change). Restarting on every 500 ms progress report
+    // made the highlight stutter backwards.
+    LaunchedEffect(lines, playing) {
         if (lines.isEmpty()) {
             activeIndex.intValue = -1
             return@LaunchedEffect
         }
-        var clock = positionMs
+        var clock = reported.value
         fun refresh() {
             activeIndex.intValue = lines.indexOfLast { it.timeMs <= clock }
                 .coerceAtLeast(0)
@@ -961,6 +964,8 @@ private fun LyricsPane(
                 if (last != 0L) clock += (now - last) / 1_000_000L
                 last = now
             }
+            val current = reported.value
+            if (abs(clock - current) > 1_500L) clock = current
             refresh()
         }
     }

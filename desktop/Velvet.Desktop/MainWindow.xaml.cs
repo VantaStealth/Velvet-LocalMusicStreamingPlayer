@@ -787,7 +787,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             var lrc = Path.ChangeExtension(track.Path, ".lrc");
-            if (File.Exists(lrc)) _lyrics = ParseLrc(File.ReadAllText(lrc));
+            if (File.Exists(lrc))
+            {
+                var sidecar = File.ReadAllText(lrc);
+                if (!LooksFabricated(sidecar))
+                {
+                    var lines = ParseLrc(sidecar);
+                    if (FitsDuration(lines, track.DurationMs)) _lyrics = lines;
+                }
+            }
         }
         catch
         {
@@ -800,6 +808,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static List<(TimeSpan At, string Text)> ParseLrc(string body)
     {
+        // [offset:+250] delays every line; ignoring it pushed whole songs out
+        // of sync even when the lyric file itself was the right recording.
+        var offset = 0L;
+        var offsetMatch = Regex.Match(body, @"\[offset:\s*([+-]?\d+)]");
+        if (offsetMatch.Success) long.TryParse(offsetMatch.Groups[1].Value, out offset);
+
         var lines = new List<(TimeSpan, string)>();
         foreach (var raw in body.Split('\n'))
         {
@@ -814,13 +828,49 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var fraction = stamp.Groups[3].Success
                     ? stamp.Groups[3].Value.PadRight(3, '0')[..3]
                     : "000";
-                var at = TimeSpan.FromMilliseconds(
-                    minutes * 60_000 + seconds * 1_000 + int.Parse(fraction));
+                var at = TimeSpan.FromMilliseconds(Math.Max(
+                    0,
+                    minutes * 60_000 + seconds * 1_000 + int.Parse(fraction) + offset));
                 lines.Add((at, text));
             }
         }
         lines.Sort((left, right) => left.Item1.CompareTo(right.Item1));
         return lines;
+    }
+
+    private static bool LooksFabricated(string body)
+    {
+        // Old cloud downloads spread unsynced text evenly from 8 s. Those files
+        // are not real sync data, so skip them and look for a proper match.
+        var times = new List<long>();
+        foreach (var raw in body.Split('\n'))
+        {
+            var match = Regex.Match(raw, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]");
+            if (!match.Success) continue;
+            var minutes = int.Parse(match.Groups[1].Value);
+            var seconds = int.Parse(match.Groups[2].Value);
+            var fraction = match.Groups[3].Success
+                ? match.Groups[3].Value.PadRight(3, '0')[..3]
+                : "000";
+            times.Add(minutes * 60_000L + seconds * 1_000L + int.Parse(fraction));
+        }
+        if (times.Count < 3) return false;
+        var steps = new List<long>();
+        for (var i = 1; i < times.Count; i++)
+        {
+            var step = times[i] - times[i - 1];
+            if (step > 0) steps.Add(step);
+        }
+        if (steps.Count == 0) return false;
+        return steps.Max() - steps.Min() <= 2 && Math.Abs(times[0] - 8_000L) <= 2;
+    }
+
+    private static bool FitsDuration(List<(TimeSpan At, string Text)> lines, long durationMs)
+    {
+        if (durationMs < 30_000L || lines.Count == 0) return true;
+        var last = lines[^1].At.TotalMilliseconds;
+        if (last > durationMs + 4_000L) return false;
+        return durationMs < 90_000L || last >= durationMs / 2.0;
     }
 
     private async Task LoadOnlineLyricsAsync(Track track)
@@ -834,10 +884,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Directory.CreateDirectory(cache);
             var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
                 System.Text.Encoding.UTF8.GetBytes(
-                    $"v2|{track.Title}|{track.Artist}|{track.DurationMs / 1000}")));
+                    $"v3|{track.Title}|{track.Artist}|{track.DurationMs / 1000}")));
             var cached = Path.Combine(cache, key + ".lrc");
 
             var body = File.Exists(cached) ? await File.ReadAllTextAsync(cached) : null;
+            if (body is not null &&
+                (LooksFabricated(body) || !FitsDuration(ParseLrc(body), track.DurationMs)))
+            {
+                File.Delete(cached);
+                body = null;
+            }
             if (body is null)
             {
                 // A real lookup can involve three endpoints with retries. Cap the
@@ -850,6 +906,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (CurrentId != requestedId) return;
 
             var parsed = body is null ? new List<(TimeSpan, string)>() : ParseLrc(body);
+            if (!FitsDuration(parsed, track.DurationMs))
+            {
+                parsed = new List<(TimeSpan, string)>();
+                body = null;
+            }
             if (body is not null && !File.Exists(cached))
                 await File.WriteAllTextAsync(cached, body);
             _lyrics = parsed;
@@ -873,6 +934,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (string.IsNullOrWhiteSpace(track.Title) || string.IsNullOrWhiteSpace(track.Artist))
             return null;
+        if (string.Equals(track.Artist, "Unknown artist", StringComparison.OrdinalIgnoreCase))
+            return null;
 
         var direct = "https://lrclib.net/api/get?track_name=" +
             Uri.EscapeDataString(track.Title) +
@@ -882,15 +945,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (track.DurationMs > 0)
             direct += "&duration=" + (track.DurationMs / 1000);
 
-        string? plain = null;
         var body = await TryGetLyricsJsonAsync(direct);
         if (body is not null)
         {
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
-            var synced = ReadSynced(root);
-            if (synced is not null) return synced;
-            plain = ReadPlain(root);
+            if (Matches(root, track))
+            {
+                var synced = ReadSynced(root);
+                if (synced is not null) return synced;
+            }
         }
 
         var search = "https://lrclib.net/api/search?q=" +
@@ -902,13 +966,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (synced is not null) return synced;
         }
 
-        var pseudo = PlainToPseudoLrc(plain, track.DurationMs);
-        return pseudo ?? await FetchOvhLyricsAsync(track);
+        return null;
+    }
+
+    /// <summary>
+    /// The direct endpoint can answer with a different recording, so validate
+    /// the title, artist and duration before showing its timings.
+    /// </summary>
+    private static bool Matches(JsonElement item, Track track)
+    {
+        var titleScore = Similarity(
+            NormalizeLyricText(track.Title),
+            NormalizeLyricText(item.TryGetProperty("trackName", out var title) ? title.GetString() : ""));
+        var artistScore = Similarity(
+            NormalizeLyricText(track.Artist),
+            NormalizeLyricText(item.TryGetProperty("artistName", out var artist) ? artist.GetString() : ""));
+        if (titleScore < 0.70 || artistScore < 0.50) return false;
+        if (track.DurationMs > 0 &&
+            item.TryGetProperty("duration", out var duration) &&
+            duration.TryGetDouble(out var seconds) && seconds > 0 &&
+            Math.Abs(track.DurationMs / 1000.0 - seconds) > 5)
+        {
+            return false;
+        }
+        return true;
     }
 
     /// <summary>
     /// LRCLIB search can return covers, karaoke tracks or same-titled songs.
-    /// Only accept a synced result that matches the title, artist and duration.
+    /// Only synced results that match the title, artist and duration survive.
     /// </summary>
     private static string? PickBestSynced(string json, Track track)
     {
@@ -926,7 +1012,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var artistScore = Similarity(
                 wantArtist,
                 NormalizeLyricText(item.TryGetProperty("artistName", out var artist) ? artist.GetString() : ""));
-            if (titleScore < 0.55 || artistScore < 0.30) continue;
+            if (titleScore < 0.70 || artistScore < 0.50) continue;
             var synced = ReadSynced(item);
             if (synced is null) continue;
 
@@ -936,8 +1022,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 duration.TryGetDouble(out var seconds) && seconds > 0)
             {
                 var delta = Math.Abs(track.DurationMs / 1000.0 - seconds);
-                if (delta > 12) continue;
-                score += delta <= 2 ? 0.22 : delta <= 5 ? 0.12 : 0.03;
+                if (delta > 5) continue;
+                score += delta <= 2 ? 0.22 : 0.10;
             }
             if (score > bestScore)
             {
@@ -945,7 +1031,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 bestSynced = synced;
             }
         }
-        return bestScore >= 0.55 ? bestSynced : null;
+        return bestScore >= 0.68 ? bestSynced : null;
     }
 
     private static double Similarity(string left, string right)
@@ -972,67 +1058,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return System.Text.RegularExpressions.Regex.Replace(text.Trim(), @"\s+", " ");
     }
 
-    private static async Task<string?> FetchOvhLyricsAsync(Track track)
-    {
-        try
-        {
-            var url = "https://api.lyrics.ovh/v1/" +
-                Uri.EscapeDataString(track.Artist) + "/" +
-                Uri.EscapeDataString(track.Title);
-            var body = await TryGetLyricsJsonAsync(url);
-            if (body is null) return null;
-            using var document = JsonDocument.Parse(body);
-            if (document.RootElement.TryGetProperty("lyrics", out var lyrics) &&
-                lyrics.ValueKind == JsonValueKind.String)
-            {
-                return PlainToPseudoLrc(lyrics.GetString(), track.DurationMs);
-            }
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private static string? ReadSynced(JsonElement element) =>
         element.TryGetProperty("syncedLyrics", out var synced) &&
         synced.ValueKind == JsonValueKind.String &&
         !string.IsNullOrWhiteSpace(synced.GetString())
             ? synced.GetString()
             : null;
-
-    private static string? ReadPlain(JsonElement element) =>
-        element.TryGetProperty("plainLyrics", out var plain) &&
-        plain.ValueKind == JsonValueKind.String &&
-        !string.IsNullOrWhiteSpace(plain.GetString())
-            ? plain.GetString()
-            : null;
-
-    /// <summary>
-    /// Some catalogues only publish unsynced text. Spread those lines across the
-    /// track so the lyric stage still moves instead of showing nothing.
-    /// </summary>
-    private static string? PlainToPseudoLrc(string? plain, long durationMs)
-    {
-        if (string.IsNullOrWhiteSpace(plain)) return null;
-        var lines = plain.Split('\n')
-            .Select(line => line.Trim())
-            .Where(line => line.Length > 0)
-            .Take(260)
-            .ToList();
-        if (lines.Count == 0) return null;
-
-        var totalMs = durationMs > 0 ? durationMs : lines.Count * 3200L;
-        var start = Math.Min(8000.0, totalMs * 0.05);
-        var end = totalMs * 0.94;
-        var step = Math.Max(900.0, (end - start) / lines.Count);
-        return string.Join('\n', lines.Select((line, index) =>
-        {
-            var at = TimeSpan.FromMilliseconds(start + step * index);
-            return $"[{(int)at.TotalMinutes:00}:{at.Seconds:00}.{at.Milliseconds:000}]{line}";
-        }));
-    }
 
     private static async Task<string?> TryGetLyricsJsonAsync(string url)
     {
@@ -1042,7 +1073,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.UserAgent.ParseAdd(
-                    "Velvet/2.0.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer)");
+                    "Velvet/2.0.1 (https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer)");
                 request.Headers.Accept.ParseAdd("application/json");
                 using var response = await LyricsHttp.SendAsync(request);
                 if ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500)

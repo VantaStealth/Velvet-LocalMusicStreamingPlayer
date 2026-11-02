@@ -1,6 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  statSync,
+  existsSync,
+  openSync,
+  readSync,
+  closeSync,
+  fstatSync
+} from "node:fs";
 import path from "node:path";
 
 const owner = "VantaStealth";
@@ -178,6 +188,92 @@ const normalize = (value) =>
     .replaceAll(" ", ".")
     .replace(/\.{2,}/g, ".");
 
+// The apps cannot rely on a device's tag reader for cloud tracks: on some
+// phones the SAF URI yields no artist at all. Publish the real tags in the
+// manifest so every client knows the title and artist before it even plays.
+function syncSafeSize(buffer, offset) {
+  return (
+    ((buffer[offset] & 0x7f) << 21) |
+    ((buffer[offset + 1] & 0x7f) << 14) |
+    ((buffer[offset + 2] & 0x7f) << 7) |
+    (buffer[offset + 3] & 0x7f)
+  );
+}
+
+function decodeId3Text(data, encoding) {
+  let text;
+  if (encoding === 1 || encoding === 2) {
+    let body = data;
+    if (body[0] === 0xfe && body[1] === 0xff) {
+      body = Buffer.from(body.subarray(2));
+      if (body.length % 2) body = body.subarray(0, body.length - 1);
+      body.swap16();
+      text = body.toString("utf16le");
+    } else {
+      if (body[0] === 0xff && body[1] === 0xfe) body = body.subarray(2);
+      if (body.length % 2) body = body.subarray(0, body.length - 1);
+      text = body.toString("utf16le");
+    }
+  } else if (encoding === 3) {
+    text = data.toString("utf8");
+  } else {
+    text = data.toString("latin1");
+  }
+  return text.replace(/^\uFEFF/, "").replace(/\u0000[\s\S]*$/, "").trim();
+}
+
+function readId3Tags(full) {
+  const tags = {};
+  let fd;
+  try {
+    fd = openSync(full, "r");
+    const head = Buffer.alloc(10);
+    readSync(fd, head, 0, 10, 0);
+    if (head.toString("latin1", 0, 3) === "ID3") {
+      const version = head[3];
+      const size = syncSafeSize(head, 6);
+      const body = Buffer.alloc(Math.min(size, 4 * 1024 * 1024));
+      readSync(fd, body, 0, body.length, 10);
+      let offset = 0;
+      if ((head[5] & 0x40) !== 0) {
+        offset += version === 4 ? syncSafeSize(body, 0) : 4 + body.readUInt32BE(0);
+      }
+      while (offset + 10 <= body.length) {
+        const id = body.toString("latin1", offset, offset + 4);
+        if (!/^[A-Z0-9]{4}$/.test(id)) break;
+        const frameSize =
+          version === 4 ? syncSafeSize(body, offset + 4) : body.readUInt32BE(offset + 4);
+        const start = offset + 10;
+        if (frameSize <= 0 || start + frameSize > body.length) break;
+        if (id === "TIT2" || id === "TPE1" || id === "TALB") {
+          const text = decodeId3Text(body.subarray(start + 1, start + frameSize), body[start]);
+          if (text) {
+            tags[id === "TIT2" ? "title" : id === "TPE1" ? "artist" : "album"] = text;
+          }
+        }
+        offset = start + frameSize;
+      }
+    }
+    const stat = fstatSync(fd);
+    if (stat.size > 128) {
+      const tail = Buffer.alloc(128);
+      readSync(fd, tail, 0, 128, stat.size - 128);
+      if (tail.toString("latin1", 0, 3) === "TAG") {
+        const field = (start, length) =>
+          tail.toString("latin1", start, start + length).replace(/\u0000[\s\S]*$/, "").trim();
+        if (!tags.title) tags.title = field(3, 30);
+        if (!tags.artist) tags.artist = field(33, 30);
+        if (!tags.album) tags.album = field(63, 30);
+      }
+    }
+  } catch {
+    // A missing or malformed tag should not stop the library from publishing.
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+  return tags;
+}
+
 const files = readdirSync(musicDir)
   .filter((name) => /\.(mp3|m4a|aac|flac|wav|ogg|oga|opus|wma)$/i.test(name))
   .sort((a, b) => a.localeCompare(b))
@@ -202,7 +298,14 @@ const files = readdirSync(musicDir)
       break;
     }
 
-    return { name, full, size: stat.size, modified: stat.mtimeMs, lyric };
+    return {
+      name,
+      full,
+      size: stat.size,
+      modified: stat.mtimeMs,
+      lyric,
+      tags: readId3Tags(full)
+    };
   });
 
 const assetsByName = new Map();
@@ -331,6 +434,9 @@ for (const file of files) {
   }
 
   const track = { name: file.name, size: asset.size, url: asset.browser_download_url };
+  if (file.tags.title) track.title = file.tags.title;
+  if (file.tags.artist) track.artist = file.tags.artist;
+  if (file.tags.album) track.album = file.tags.album;
   if (backupUrls.length) track.mirrors = backupUrls;
   if (lyricAsset) track.lyrics = lyricAsset.browser_download_url;
   tracks.push(track);
@@ -342,7 +448,7 @@ for (const asset of removedAssets.values()) {
 
 const manifest = {
   name: "Velvet Cloud",
-  version: 4,
+  version: 5,
   updated: new Date().toISOString().slice(0, 10),
   tracks
 };

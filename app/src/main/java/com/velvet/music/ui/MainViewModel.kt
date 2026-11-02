@@ -64,8 +64,13 @@ data class CloudItem(
     val selected: Boolean = true,
     val progress: Float = 0f,
     val status: String = "",
-    val failed: Boolean = false
+    val failed: Boolean = false,
+    val title: String? = null,
+    val artist: String? = null
 ) {
+    val displayTitle: String
+        get() = title?.takeIf { it.isNotBlank() } ?: name.substringBeforeLast('.')
+
     val sizeLabel: String
         get() = when {
             sizeBytes >= 1_073_741_824L -> String.format("%.1f GB", sizeBytes / 1_073_741_824.0)
@@ -491,13 +496,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }.getOrDefault(emptyList()).map { CloudApi.key(it.name) }.toSet()
             runCatching {
                 CloudApi.manifest()
+            }.onSuccess { manifest ->
+                if (manifest.isNotEmpty()) {
+                    CloudApi.saveCatalog(app, manifest)
+                    retagLibrary()
+                }
+                val entries = manifest
                     .filter { CloudApi.key(it.name) !in localNames }
                     .sortedBy { it.name.lowercase() }
-            }.onSuccess { entries ->
                 _cloud.update { state ->
                     state.copy(
                         loading = false,
-                        items = entries.map { CloudItem(it.name, it.url, it.sizeBytes, it.mirrors) }
+                        items = entries.map {
+                            CloudItem(
+                                name = it.name,
+                                url = it.url,
+                                sizeBytes = it.sizeBytes,
+                                mirrors = it.mirrors,
+                                title = it.title,
+                                artist = it.artist
+                            )
+                        }
                     )
                 }
             }.onFailure { error ->
@@ -527,7 +546,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val result = CloudApi.download(
                     context = app,
-                    entry = CloudEntry(item.name, item.url, item.sizeBytes, item.mirrors),
+                    entry = CloudEntry(
+                        name = item.name,
+                        url = item.url,
+                        sizeBytes = item.sizeBytes,
+                        mirrors = item.mirrors,
+                        title = item.title,
+                        artist = item.artist
+                    ),
                     destTreeUri = Uri.parse(libraryUri)
                 ) { fraction ->
                     updateCloudItem(item.url) {
@@ -572,11 +598,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val localNames = runCatching {
                 repository.listAudio(Uri.parse(libraryUri), recursive = true)
             }.getOrDefault(emptyList()).map { CloudApi.key(it.name) }.toSet()
-            val missing = runCatching { CloudApi.manifest() }
-                .getOrDefault(emptyList())
-                .count { CloudApi.key(it.name) !in localNames }
+            val manifest = runCatching { CloudApi.manifest() }.getOrDefault(emptyList())
+            if (manifest.isNotEmpty()) {
+                CloudApi.saveCatalog(app, manifest)
+                retagLibrary()
+            }
+            val missing = manifest.count { CloudApi.key(it.name) !in localNames }
             _cloud.update { it.copy(suggest = missing) }
         }
+    }
+
+    private suspend fun retagLibrary() {
+        val current = _library.value.tracks
+        if (current.isEmpty()) return
+        val retagged = runCatching { repository.retagFromCatalog(current) }
+            .getOrDefault(current)
+        if (retagged == current) return
+        trackMap = retagged.associateBy { it.id }
+        _library.update { it.copy(tracks = retagged) }
     }
 
     fun refreshSpectrumCapture() {

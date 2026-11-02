@@ -1,185 +1,244 @@
 {
   "name": "Velvet Cloud",
-  "version": 4,
+  "version": 5,
   "updated": "2026-11-02",
   "tracks": [
     {
       "name": "Abbos Dance.mp3",
       "size": 6820055,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Abbos.Dance.mp3",
+      "title": "Alors on danse",
+      "artist": "Stromae",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Abbos.Dance.lrc"
     },
     {
       "name": "Ainsi Ba La Vida.mp3",
       "size": 6778992,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Ainsi.Ba.La.Vida.mp3",
+      "title": "Ainsi bas la vida",
+      "artist": "Indila",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Ainsi.Ba.La.Vida.lrc"
     },
     {
       "name": "APT.mp3",
       "size": 5400851,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/APT.mp3",
+      "title": "APT.",
+      "artist": "ROSÉ & Bruno Mars",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/APT.lrc"
     },
     {
       "name": "Bella Ciao.mp3",
       "size": 4167759,
-      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Bella.Ciao.mp3"
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Bella.Ciao.mp3",
+      "title": "Bella Ciao (Remix)",
+      "artist": "Leandro Renzi"
     },
     {
       "name": "Belly Dancer.mp3",
       "size": 6808499,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Belly.Dancer.mp3",
+      "title": "Belly Dancer",
+      "artist": "Imanbek & BYOR",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Belly.Dancer.lrc"
     },
     {
       "name": "Billie Jean.mp3",
       "size": 10146372,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Billie.Jean.mp3",
+      "title": "Billie Jean",
+      "artist": "Michael Jackson",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Billie.Jean.lrc"
     },
     {
       "name": "Cheri Cheri Lady.mp3",
       "size": 7545375,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Cheri.Cheri.Lady.mp3",
+      "title": "Cheri Cheri Lady",
+      "artist": "Modern Talking",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Cheri.Cheri.Lady.lrc"
     },
     {
       "name": "Darnir Danse.mp3",
       "size": 6481774,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Darnir.Danse.mp3",
+      "title": "Dernière danse",
+      "artist": "Indila",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Darnir.Danse.lrc"
     },
     {
       "name": "Dracula.mp3",
       "size": 7534560,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Dracula.mp3",
+      "title": "Dracula",
+      "artist": "Tame Impala",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Dracula.lrc"
     },
     {
       "name": "Dua Lipa - Training Season (Official Music Video) [ZjBZ8MUnB0E].mp3",
       "size": 7689218,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Dua.Lipa.-.Training.Season.Official.Music.Video.ZjBZ8MUnB0E.mp3",
+      "title": "Training Season",
+      "artist": "Dua Lipa",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Dua.Lipa.-.Training.Season.Official.Music.Video.ZjBZ8MUnB0E.lrc"
     },
     {
       "name": "Happy Nation.mp3",
       "size": 7057061,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Happy.Nation.mp3",
+      "title": "Happy Nation",
+      "artist": "Ace of Base",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Happy.Nation.lrc"
     },
     {
       "name": "Headlights.mp3",
       "size": 5235929,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Headlights.mp3",
+      "title": "Headlights",
+      "artist": "Alok & Alan Walker feat. KIDDO",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Headlights.lrc"
     },
     {
       "name": "HEAVENLY JUMPSTYLE.mp3",
       "size": 3665657,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/HEAVENLY.JUMPSTYLE.mp3",
+      "title": "HEAVENLY JUMPSTYLE",
+      "artist": "TWXNY, Sxilwix & INNXCENCE",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/HEAVENLY.JUMPSTYLE.lrc"
     },
     {
       "name": "House of Memories.mp3",
       "size": 6666122,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/House.of.Memories.mp3",
+      "title": "House of Memories",
+      "artist": "Panic! at the Disco",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/House.of.Memories.lrc"
     },
     {
       "name": "Hymn for the weekend.mp3",
       "size": 7898023,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Hymn.for.the.weekend.mp3",
+      "title": "Hymn for the Weekend",
+      "artist": "Coldplay",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Hymn.for.the.weekend.lrc"
     },
     {
       "name": "Industry Baby.mp3",
       "size": 7190574,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Industry.Baby.mp3",
+      "title": "Industry Baby",
+      "artist": "Lil Nas X & Jack Harlow",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Industry.Baby.lrc"
     },
     {
       "name": "Macarena.mp3",
       "size": 7854867,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Macarena.mp3",
+      "title": "Macarena",
+      "artist": "Los del Río",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Macarena.lrc"
     },
     {
       "name": "Meant to be.mp3",
       "size": 4626456,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Meant.to.be.mp3",
+      "title": "Meant to Be",
+      "artist": "Bebe Rexha & Florida Georgia Line",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Meant.to.be.lrc"
     },
     {
       "name": "Old Town Road.mp3",
       "size": 5182030,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Old.Town.Road.mp3",
+      "title": "Old Town Road (Remix)",
+      "artist": "Lil Nas X & Billy Ray Cyrus",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Old.Town.Road.lrc"
     },
     {
       "name": "Pon de Replay.mp3",
       "size": 7671454,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Pon.de.Replay.mp3",
+      "title": "Pon de Replay",
+      "artist": "Rihanna",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Pon.de.Replay.lrc"
     },
     {
       "name": "Rampampam.mp3",
       "size": 6384882,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Rampampam.mp3",
+      "title": "Rampampam",
+      "artist": "Minelli",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Rampampam.lrc"
     },
     {
       "name": "Rasputin.mp3",
       "size": 9037411,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Rasputin.mp3",
+      "title": "Rasputin",
+      "artist": "Boney M.",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Rasputin.lrc"
     },
     {
       "name": "Skyfall.mp3",
       "size": 9401532,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Skyfall.mp3",
+      "title": "Skyfall",
+      "artist": "Adele",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Skyfall.lrc"
     },
     {
       "name": "Snowman.mp3",
       "size": 5458736,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Snowman.mp3",
+      "title": "Snowman",
+      "artist": "Sia",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Snowman.lrc"
     },
     {
       "name": "Stereo.mp3",
       "size": 7072444,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Stereo.mp3",
+      "title": "Stereo Hearts",
+      "artist": "Gym Class Heroes feat. Adam Levine",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Stereo.lrc"
     },
     {
       "name": "Training Season.mp3",
       "size": 6606554,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Training.Season.mp3",
+      "title": "Training Season",
+      "artist": "Dua Lipa",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Training.Season.lrc"
     },
     {
       "name": "Tug'medona Ihi Ihi.mp3",
       "size": 8183547,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Tug.medona.Ihi.Ihi.mp3",
+      "title": "Tourner dans le vide",
+      "artist": "Indila",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Tug.medona.Ihi.Ihi.lrc"
     },
     {
       "name": "Undress Rehearsal - Timeflies ｜ Audio Edit [mErLiV5Jq8c].mp3",
       "size": 934278,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Undress.Rehearsal.-.Timeflies.Audio.Edit.mErLiV5Jq8c.mp3",
-      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Undress.Rehearsal.-.Timeflies.Audio.Edit.mErLiV5Jq8c.lrc"
+      "title": "Undress Rehearsal",
+      "artist": "Timeflies"
     },
     {
       "name": "Wellerman.mp3",
       "size": 4549001,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Wellerman.mp3",
+      "title": "Wellerman (Sea Shanty)",
+      "artist": "Nathan Evans",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Wellerman.lrc"
     },
     {
       "name": "Татьяна Куртукова - Одного.mp3",
       "size": 6509377,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/-.mp3",
+      "title": "Одного",
+      "artist": "Татьяна Куртукова",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/-.lrc"
     }
   ]

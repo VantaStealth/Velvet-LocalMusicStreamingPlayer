@@ -15,9 +15,23 @@ Velvet is a local music player for Windows and Android, built around the files y
 | Platform | File | Requirements |
 | --- | --- | --- |
 | Windows 10 2004+ / 11 (x64) | [`Velvet.exe`](Velvet.exe) | None — self-contained, no .NET install |
-| Android 8.0+ | [`Velvet-2.0.apk`](Velvet-2.0.apk) | None |
+| Android 8.0+ | [`Velvet-2.0.1.apk`](Velvet-2.0.1.apk) | None |
 
 The Windows build is a single self-contained executable. It carries its own .NET runtime, WPF, and native libraries, so a fresh PC can double-click it and play. There is no separate dependency installer to run.
+
+### Installing on Android
+
+The APK installs on a phone that has never had Velvet before. No old version is required.
+
+1. Download `Velvet-2.0.1.apk` and open it from your notifications or file manager.
+2. If Android asks, allow **Install unknown apps** for the browser or file manager you are using. On many phones this is **Settings → Apps → Special app access → Install unknown apps**.
+3. If Play Protect shows a warning, tap **More details → Install anyway**. Velvet is signed by the project, not distributed through Play, so Play Protect has no reputation data for it.
+
+## What's new in 2.0.1
+
+- **Clean installs on Android.** The APK is signed with the v1, v2, and v3 schemes, so a phone that has never had Velvet installed can install it directly. OEM installers and Play Protect can still block any side-loaded APK; the steps above cover those prompts.
+- **Lyrics are only shown when they are real.** Velvet no longer stretches unsynced text across a track to fake a moving stage. A line appears only when a synced catalogue match clears the title, artist, and duration checks, and `[offset:]` values are honoured. A sidecar is also rejected when its last line falls outside the audio, so a 34-second clip or a shortened edit cannot borrow another cut's timing. The lyric clock now runs on the frame clock and re-anchors only after a real seek or skip, so it does not drift or reset every half second.
+- **Artists survive a cloud download on mobile.** The Velvet Cloud manifest now carries each track's ID3 title, artist, and album, and the Android scan uses that catalogue when a downloaded file has weak or missing tags. No more "Unknown artist" for tracks that clearly have an artist. This also unblocks online lyric lookup, because Velvet will not search with an unknown artist.
 
 ## What's new in 2.0
 
@@ -81,21 +95,29 @@ Open **LYRICS** on Android or **Disco mode** on desktop. Velvet resolves lyrics 
 2. The lyric sidecar published with that track in Velvet Cloud.
 3. A runtime lookup against a public synced-lyrics catalogue.
 
-Every candidate is scored against the track before it is used: the title and artist are normalised (brackets, `feat.`, remaster/radio edits and punctuation are stripped) and compared, and the duration has to be close. A synced result beats plain text. If nothing scores high enough, Velvet says the track has no lyrics instead of showing the wrong ones. A bad cache entry can be discarded with **Search again**.
+Every candidate is scored against the track before it is used: the title and artist are normalised (brackets, `feat.`, remaster/radio edits and punctuation are stripped) and compared, and the duration has to be close. Velvet accepts only a genuinely synced result. A plain-text result is not turned into fabricated timings. A sidecar whose last line lands outside the actual audio (a 34-second clip, a shortened edit, a slowed remix) is rejected as well, so one cut cannot wear another cut's timing. If nothing scores high enough, Velvet says the track has no lyrics instead of showing the wrong ones. A bad cache entry can be discarded with **Search again**.
 
-Timed `[mm:ss.xx]` lines follow playback and re-anchor on every seek. If a catalogue only has unsynchronised text, Velvet spreads those lines across the track so the stage still moves. Lyrics are cached locally after the first lookup. `tools/fetch-lyrics.mjs` fills in sidecars for a local library and `tools/publish-cloud.mjs` uploads them beside the audio.
+Timed `[mm:ss.xx]` lines follow playback on a frame clock, honour `[offset:±ms]`, and re-anchor immediately on a seek or skip. Lyrics are cached locally after the first lookup. `tools/fetch-lyrics.mjs` fills in sidecars for a local library and `tools/publish-cloud.mjs` uploads them beside the audio.
 
 ## Volume controller, everywhere
 
 **Windows.** While Velvet is running — including from the tray at boot — the volume keys are captured system-wide. Velvet steps the Windows media volume through Core Audio and draws its own compact glass HUD at the bottom of the screen. The stock Windows volume flyout is suppressed. Mute works too.
 
-**Android.** Open the **More** menu and choose **Volume keys takeover**. Enabling the Velvet accessibility service lets volume key presses open the full Velvet volume pill anywhere on the phone: on the lock screen, inside games, or with nothing playing at all. The panel is near-opaque for readability, and its liquid, bubbles, and level readout ease into every change. Drag anywhere on the rail to pick any level; Velvet keeps the continuous value and commits the closest step the device exposes. Tap **MIX** on the pill for Media, Ring, Alerts, Alarm, Calls, and the Velvet channel. The service only filters volume keys and never reads screen content.
+![Velvet volume HUD](docs/velvet-volume-hud.png)
+
+*Changing volume with the minimal island still on top.*
+
+**Android.** Android hides accessibility access for sideloaded apps until you allow it. Open **Settings → Apps → Velvet**, tap the **three-dot menu**, and choose **Restricted access** (or **Allow restricted settings**). Then return to Velvet, open the **three-dot menu**, and choose **Volume keys takeover**. Enabling the Velvet accessibility service lets volume key presses open the full Velvet volume pill anywhere on the phone: on the lock screen, inside games, or with nothing playing at all. The floating orb panel is near-opaque for readability, and its liquid, bubbles, and level readout ease into every change. Drag anywhere on the rail to pick any level; Velvet keeps the continuous value and commits the closest step the device exposes. Tap **MIX** on the pill for Media, Ring, Alerts, Alarm, Calls, and the Velvet channel, and set an exact percentage for each one. The service only filters volume keys and never reads screen content.
 
 Android exposes one shared media stream to every app, so the mixer controls device streams while the **Velvet channel** slider is separate; it can push Velvet from 0% to **150%** so it sits above a game or video.
 
 ## The floating island
 
 ![Velvet desktop disco](docs/velvet-desktop-disco.png)
+
+![Velvet minimal island](docs/velvet-island-minimal.png)
+
+*The one-line minimal island stays on top of whatever you are doing. The problem above is a real hard task from RoboContest, not a mock-up.*
 
 - Drag it anywhere; it snaps to the top edge and to the horizontal centre.
 - Double-click to switch between the full island and the one-line minimal island.
@@ -160,6 +182,8 @@ Android exposes one shared media stream to every app, so the mixer controls devi
 - Each disco run picks its own palette, burst order, and ship path at runtime.
 - Per-track procedural cover art for tracks without embedded artwork, generated deterministically from the track.
 - Animated glow sliders, liquid transitions, and framed artwork throughout the apps.
+
+Velvet is polished, clean, and cool without the disco mode. Disco is still included — it is not perfect, but it is here just because.
 
 ### Velvet Cloud
 

@@ -5,7 +5,9 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
 
@@ -14,7 +16,10 @@ data class CloudEntry(
     val url: String,
     val sizeBytes: Long,
     val mirrors: List<String> = emptyList(),
-    val lyrics: String? = null
+    val lyrics: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null
 ) {
     val sources: List<String>
         get() = (listOf(url) + mirrors).filter { it.isNotBlank() }
@@ -23,14 +28,14 @@ data class CloudEntry(
 object CloudApi {
 
     const val MANIFEST_URL =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/manifest.json?v=8"
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/manifest.json?v=9"
 
     // The same manifest is committed to the repository, so a removed release
     // asset does not strand clients that still have working backup mirrors.
     private val manifestUrls = listOf(
         MANIFEST_URL,
-        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/main/tools/velvet-cloud-manifest.json?v=8",
-        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreamingPlayer@main/tools/velvet-cloud-manifest.json?v=8"
+        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/main/tools/velvet-cloud-manifest.json?v=9",
+        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreamingPlayer@main/tools/velvet-cloud-manifest.json?v=9"
     )
 
     private var cache: List<CloudEntry> = emptyList()
@@ -82,7 +87,10 @@ object CloudApi {
                                 url,
                                 item.optLong("size", 0L),
                                 mirrors,
-                                item.optString("lyrics").takeIf { it.isNotBlank() }
+                                item.optString("lyrics").takeIf { it.isNotBlank() },
+                                item.optString("title").takeIf { it.isNotBlank() },
+                                item.optString("artist").takeIf { it.isNotBlank() },
+                                item.optString("album").takeIf { it.isNotBlank() }
                             )
                         )
                     }
@@ -100,6 +108,57 @@ object CloudApi {
         if (cache.isNotEmpty()) return@withContext cache
         throw lastError ?: IllegalStateException("Velvet Cloud is unreachable right now.")
     }
+
+    private const val CATALOG_FILE = "cloud-catalog.json"
+
+    /**
+     * Keeps the last known cloud tags on disk. A library rescan can then label
+     * downloaded tracks correctly even when the phone's tag reader returns
+     * nothing for the SAF document.
+     */
+    fun saveCatalog(context: Context, entries: List<CloudEntry>) {
+        runCatching {
+            val tracks = JSONArray()
+            for (entry in entries) {
+                if (entry.title.isNullOrBlank() && entry.artist.isNullOrBlank()) continue
+                tracks.put(
+                    JSONObject().apply {
+                        put("name", entry.name)
+                        put("title", entry.title.orEmpty())
+                        put("artist", entry.artist.orEmpty())
+                        put("album", entry.album.orEmpty())
+                    }
+                )
+            }
+            JSONObject().put("tracks", tracks)
+                .toString()
+                .let { File(context.filesDir, CATALOG_FILE).writeText(it) }
+        }
+    }
+
+    fun catalog(context: Context): Map<String, CloudEntry> = runCatching {
+        val file = File(context.filesDir, CATALOG_FILE)
+        if (!file.isFile) return emptyMap()
+        val tracks = JSONObject(file.readText()).optJSONArray("tracks") ?: return emptyMap()
+        buildMap {
+            for (index in 0 until tracks.length()) {
+                val item = tracks.optJSONObject(index) ?: continue
+                val name = item.optString("name")
+                if (name.isBlank()) continue
+                put(
+                    key(name),
+                    CloudEntry(
+                        name = name,
+                        url = "",
+                        sizeBytes = 0L,
+                        title = item.optString("title").takeIf { it.isNotBlank() },
+                        artist = item.optString("artist").takeIf { it.isNotBlank() },
+                        album = item.optString("album").takeIf { it.isNotBlank() }
+                    )
+                )
+            }
+        }
+    }.getOrDefault(emptyMap())
 
     suspend fun download(
         context: Context,

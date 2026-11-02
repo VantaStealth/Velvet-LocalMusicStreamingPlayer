@@ -762,16 +762,21 @@ private fun CloudRow(
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = item.name,
+                    text = item.displayTitle,
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (item.failed) TextTertiary else TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = item.status.ifBlank { item.sizeLabel },
+                    text = item.artist
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { "$it · ${item.status.ifBlank { item.sizeLabel }}" }
+                        ?: item.status.ifBlank { item.sizeLabel },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (item.failed) accent else TextTertiary
+                    color = if (item.failed) accent else TextTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             if (item.progress > 0f) {
