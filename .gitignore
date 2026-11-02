@@ -20,7 +20,7 @@ publish/
 .tmp-publish/
 
 # Music lives in the Velvet Cloud release, not in git history.
-music/
+/music/
 
 # Tool screenshots
 tools/shots/

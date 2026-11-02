@@ -76,6 +76,8 @@ import com.velvet.music.data.Album
 import com.velvet.music.data.SortMode
 import com.velvet.music.data.Track
 import com.velvet.music.data.VelvetAccent
+import com.velvet.music.ui.CloudItem
+import com.velvet.music.ui.CloudState
 import com.velvet.music.ui.LibraryState
 import com.velvet.music.ui.PlayerState
 import com.velvet.music.ui.ScanState
@@ -119,7 +121,14 @@ fun LibraryScreen(
     onPlayAll: (List<Track>, Boolean) -> Unit,
     onToggleFavorite: (Track) -> Unit,
     onOpenPlayer: () -> Unit,
-    onOpenAlbum: (Album) -> Unit
+    onOpenAlbum: (Album) -> Unit,
+    onOpenVolumeSettings: () -> Unit,
+    cloud: CloudState,
+    onCloudDownload: () -> Unit,
+    onCloudClose: () -> Unit,
+    onCloudToggle: (Int) -> Unit,
+    onCloudSelectAll: (Boolean) -> Unit,
+    onCloudRun: () -> Unit
 ) {
     val palette = LocalAccent.current
     var searchOpen by rememberSaveable { mutableStateOf(false) }
@@ -237,6 +246,20 @@ fun LibraryScreen(
                                     onChooseFolder()
                                 }
                             )
+                            DropdownMenuItem(
+                                text = { Text("Volume keys takeover", color = TextPrimary) },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_volume),
+                                        contentDescription = null,
+                                        tint = TextSecondary
+                                    )
+                                },
+                                onClick = {
+                                    moreMenu = false
+                                    onOpenVolumeSettings()
+                                }
+                            )
                         }
                     }
                 }
@@ -265,7 +288,20 @@ fun LibraryScreen(
                         modifier = Modifier.weight(1f),
                         onClick = { if (displayed.isNotEmpty()) onPlayAll(displayed, true) }
                     )
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
+                    CircleIconButton(
+                        icon = painterResource(R.drawable.ic_cloud_download),
+                        contentDescription = "Velvet Cloud",
+                        onClick = onCloudDownload,
+                        size = 42.dp,
+                        iconSize = 18.dp,
+                        tint = if (cloud.suggest > 0) palette.primary else TextPrimary,
+                        background = if (cloud.suggest > 0) palette.primary.copy(alpha = 0.12f)
+                        else Color.White.copy(alpha = 0.055f),
+                        border = if (cloud.suggest > 0) palette.primary.copy(alpha = 0.30f)
+                        else Color.White.copy(alpha = 0.08f)
+                    )
+                    Spacer(Modifier.width(8.dp))
                     CircleIconButton(
                         icon = painterResource(R.drawable.ic_search),
                         contentDescription = "Search",
@@ -295,6 +331,16 @@ fun LibraryScreen(
                             onClear = { query = "" }
                         )
                     }
+                }
+            }
+
+            if (cloud.suggest > 0) {
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    CloudSuggestionCard(
+                        count = cloud.suggest,
+                        onDownload = onCloudDownload
+                    )
                 }
             }
 
@@ -491,6 +537,258 @@ fun LibraryScreen(
 
         AnimatedVisibility(visible = scan.active && library.tracks.isEmpty()) {
             ScannerOverlay(scan = scan, onChooseFolder = onChooseFolder)
+        }
+
+        if (cloud.open) {
+            CloudSheet(
+                cloud = cloud,
+                onClose = onCloudClose,
+                onToggle = onCloudToggle,
+                onSelectAll = onCloudSelectAll,
+                onRun = onCloudRun
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudSuggestionCard(count: Int, onDownload: () -> Unit) {
+    val palette = LocalAccent.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(palette.primary.copy(alpha = 0.10f))
+            .border(1.dp, palette.primary.copy(alpha = 0.28f), RoundedCornerShape(16.dp))
+            .clickable { onDownload() }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(palette.primary.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_cloud_download),
+                contentDescription = null,
+                tint = palette.primary,
+                modifier = Modifier.size(17.dp)
+            )
+        }
+        Spacer(Modifier.width(11.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = "$count track${if (count == 1) "" else "s"} waiting in Velvet Cloud",
+                style = MaterialTheme.typography.titleSmall,
+                color = TextPrimary
+            )
+            Text(
+                text = "Tap to add them to this library",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextTertiary
+            )
+        }
+        Icon(
+            painter = painterResource(R.drawable.ic_arrow_down),
+            contentDescription = null,
+            tint = palette.primary,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun CloudSheet(
+    cloud: CloudState,
+    onClose: () -> Unit,
+    onToggle: (Int) -> Unit,
+    onSelectAll: (Boolean) -> Unit,
+    onRun: () -> Unit
+) {
+    val palette = LocalAccent.current
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.66f))
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 620.dp)
+                .clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+                .background(Surface1)
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "VELVET CLOUD",
+                        style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.6.sp),
+                        color = palette.primary
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = "Your shared library, hosted online",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                CircleIconButton(
+                    icon = painterResource(R.drawable.ic_close),
+                    contentDescription = "Close",
+                    onClick = onClose,
+                    size = 32.dp,
+                    iconSize = 15.dp,
+                    background = Color.White.copy(alpha = 0.05f)
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+
+            when {
+                cloud.loading -> {
+                    Text(
+                        text = "Checking Velvet Cloud…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextTertiary
+                    )
+                    Spacer(Modifier.height(24.dp))
+                }
+
+                cloud.items.isEmpty() -> {
+                    Text(
+                        text = cloud.message
+                            ?: "Everything in Velvet Cloud is already in your library.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                else -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        GhostChip(text = "Select all", onClick = { onSelectAll(true) })
+                        Spacer(Modifier.width(8.dp))
+                        GhostChip(text = "None", onClick = { onSelectAll(false) })
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = "${cloud.selectedCount} of ${cloud.items.size}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextTertiary
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .heightIn(max = 360.dp)
+                    ) {
+                        items(cloud.items, key = { it.url }) { item ->
+                            CloudRow(
+                                item = item,
+                                accent = palette.primary,
+                                onAccent = palette.onAccent,
+                                onToggle = { onToggle(cloud.items.indexOf(item)) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    if (cloud.message != null) {
+                        Text(
+                            text = cloud.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (cloud.items.any { it.failed }) palette.primary else TextTertiary
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    GradientPill(
+                        text = when {
+                            cloud.busy -> "Downloading…"
+                            cloud.selectedCount == 0 -> "Select tracks to download"
+                            else -> "Download ${cloud.selectedCount} track${if (cloud.selectedCount == 1) "" else "s"}"
+                        },
+                        onClick = { if (!cloud.busy && cloud.selectedCount > 0) onRun() }
+                    )
+                    Spacer(Modifier.height(2.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudRow(
+    item: CloudItem,
+    accent: Color,
+    onAccent: Color,
+    onToggle: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 7.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(21.dp)
+                    .clip(CircleShape)
+                    .background(if (item.selected) accent else Color.White.copy(alpha = 0.05f))
+                    .border(
+                        1.dp,
+                        if (item.selected) accent else Color.White.copy(alpha = 0.12f),
+                        CircleShape
+                    )
+                    .clickable { onToggle() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (item.selected) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = onAccent,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (item.failed) TextTertiary else TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.status.ifBlank { item.sizeLabel },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (item.failed) accent else TextTertiary
+                )
+            }
+            if (item.progress > 0f) {
+                Text(
+                    text = "${(item.progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = accent
+                )
+            }
+        }
+        if (item.progress > 0f && item.progress < 1f) {
+            Spacer(Modifier.height(5.dp))
+            HairlineProgress(
+                fraction = item.progress,
+                accent = accent,
+                modifier = Modifier.padding(start = 32.dp)
+            )
         }
     }
 }

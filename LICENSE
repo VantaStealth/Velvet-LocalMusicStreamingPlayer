@@ -1,24 +1,56 @@
-MIT License
+# Velvet Community License 1.0
 
-Copyright (c) 2026 Umar
+Copyright (c) 2026 Umar. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Velvet is source-available. This license lets you use, study, modify, and share Velvet for free, while keeping Velvet free of ads, paywalls, and locked features — for you and for everyone who receives it.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## 1. Free use
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+You may use, copy, build, and run Velvet for personal, educational, or other non-commercial purposes, free of charge.
 
-The bundled audio files in music/ are not covered by this license, and the
-Velvet name and artwork remain the property of their respective owners.
+You may modify Velvet and share your changes, provided that every copy and every derivative work stays fully functional for free and remains under this exact license.
+
+## 2. Things you must never do
+
+You may not, and may not permit anyone else to:
+
+1. Add advertising of any kind to Velvet, including banners, sponsored content, promoted tracks, referral links, or telemetry that exists to serve ads.
+2. Lock, disable, degrade, delay, or remove any feature behind a payment, subscription, donation, account, waitlist, invite, or any other condition.
+3. Sell Velvet, charge for it, put it behind a paywall, or bundle it into a paid product or service.
+4. Require payment or any other compensation to unlock the full app, updates, Velvet Cloud, or any of its music.
+5. Add tracking, analytics, or data collection that is not strictly required for the feature the user asked for.
+6. Distribute a modified version that violates any part of this license.
+
+Velvet itself must always be free, ad-free, and paywall-free. That is the reason it exists.
+
+## 3. Commercial use needs permission
+
+Any commercial use — including selling, monetizing, bundling with a paid product, offering paid support as the main product, or running Velvet as part of a paid service — requires prior written permission from the copyright holder and a separate agreement.
+
+If you want to monetize Velvet or a derivative work, you must contact the copyright holder first and agree on compensation. Compensation may be financial, a revenue share, or another arrangement the copyright holder accepts in writing. Without that written agreement, monetization is not allowed.
+
+## 4. Contributions
+
+By contributing code, artwork, or documentation to Velvet, you grant the copyright holder a perpetual, worldwide, royalty-free right to use, modify, and distribute your contribution under this license. You keep the copyright to your contribution.
+
+## 5. Attribution
+
+Any copy or derivative work must keep this license, the copyright notice, and a clear link to the original project. You may not remove or obscure them.
+
+## 6. Termination
+
+Your rights under this license end automatically if you violate any term. On termination you must stop distributing Velvet and destroy all copies you control, except copies you are legally required to keep.
+
+The copyright holder may also grant individual exceptions in writing. An exception applies only to the person and scope named in that writing.
+
+## 7. No warranty
+
+Velvet is provided "as is", without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, and non-infringement. In no event shall the copyright holder be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with Velvet or its use.
+
+## 8. Accepting the license
+
+By using, copying, building, or distributing Velvet, you accept this license. If you do not accept it, do not use Velvet.
+
+---
+
+Velvet is free because it was built to be free. Keep it that way.

@@ -133,6 +133,36 @@
             <Border x:Name="InnerEdge" CornerRadius="33" BorderThickness="1" Margin="1"
                     BorderBrush="#16FFFFFF" IsHitTestVisible="False" />
 
+            <Grid x:Name="SnapMark" Width="18" Height="22" VerticalAlignment="Top"
+                  HorizontalAlignment="Center" Panel.ZIndex="99"
+                  IsHitTestVisible="False" Visibility="Collapsed">
+                <Rectangle Width="12" Height="22" RadiusX="6" RadiusY="6"
+                           HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#CC6FB8FF" Offset="0" />
+                            <GradientStop Color="#006FB8FF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                    <Rectangle.Effect>
+                        <BlurEffect Radius="10" />
+                    </Rectangle.Effect>
+                </Rectangle>
+                <Rectangle Width="3" Height="18" RadiusX="1.5" RadiusY="1.5"
+                           HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#FFFFFFFF" Offset="0" />
+                            <GradientStop Color="#FF6FB8FF" Offset="0.35" />
+                            <GradientStop Color="#006FB8FF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                    <Rectangle.Effect>
+                        <DropShadowEffect Color="#FF3B82F6" BlurRadius="8" ShadowDepth="0" Opacity="0.95" />
+                    </Rectangle.Effect>
+                </Rectangle>
+            </Grid>
+
             <Grid x:Name="LayoutHost" Width="356" Height="82"
                   HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Grid.LayoutTransform>
@@ -242,6 +272,17 @@
                         </Button>
                     </Grid>
                 </Grid>
+
+                <Thumb x:Name="MinimalGrip" Width="9" Height="30" HorizontalAlignment="Right"
+                       VerticalAlignment="Top" Cursor="SizeWE" Visibility="Collapsed"
+                       ToolTip="Drag to resize" DragDelta="MinimalGrip_DragDelta"
+                       DragCompleted="Grip_DragCompleted">
+                    <Thumb.Template>
+                        <ControlTemplate TargetType="Thumb">
+                            <Border Background="Transparent" />
+                        </ControlTemplate>
+                    </Thumb.Template>
+                </Thumb>
 
                 <Grid x:Name="SettingsPanel" Margin="18,92,16,0" VerticalAlignment="Top"
                       Visibility="Collapsed">

@@ -26,6 +26,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly AudioSpectrum _spectrum = new();
     private readonly AppSettings _settings;
     private readonly ObservableCollection<Track> _all = new();
+    private readonly ObservableCollection<CloudTrack> _cloudItems = new();
     private readonly float[] _spectrumBuffer = new float[AudioSpectrum.BandCount];
     private static readonly int[] LineBandStart = { 0, 8, 16, 26, 36 };
     private static readonly int[] LineBandEnd = { 10, 18, 28, 38, AudioSpectrum.BandCount };
@@ -87,6 +88,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _sessionDetail = "Play a track to publish Velvet to the Island Media Controls.";
     private string _queueSummary = "Queue is empty";
     private string _accentKey = "Amethyst";
+    private bool _cloudOverlayOpen;
+    private bool _cloudUpload;
+    private bool _cloudBusy;
+    private string _cloudTitle = "";
+    private string _cloudPathText = "";
+    private string _cloudSummary = "";
+    private string _cloudActionText = "Sync";
 
     public MainWindow()
     {
@@ -341,6 +349,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string QueueSummary { get => _queueSummary; private set => Set(ref _queueSummary, value); }
     public string AccentKey { get => _accentKey; private set => Set(ref _accentKey, value); }
 
+    public ObservableCollection<CloudTrack> CloudItems => _cloudItems;
+    public bool IsCloudOverlayOpen { get => _cloudOverlayOpen; private set => Set(ref _cloudOverlayOpen, value); }
+    public string CloudTitle { get => _cloudTitle; private set => Set(ref _cloudTitle, value); }
+    public string CloudPathText { get => _cloudPathText; private set => Set(ref _cloudPathText, value); }
+    public string CloudSummary { get => _cloudSummary; private set => Set(ref _cloudSummary, value); }
+    public string CloudActionText { get => _cloudActionText; private set => Set(ref _cloudActionText, value); }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         App.ApplyAccent(Accents.For(_settings.Accent));
@@ -368,10 +383,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _spectrum.Start();
         InitLiveAccents();
         InitSpectrumLines();
+        RecommendCloudSync();
+
+        if (StartHidden)
+        {
+            ContentRoot.Opacity = 1;
+            ContentShift.Y = 0;
+            return;
+        }
+
         AnimateIn();
         ContentRoot.Focus();
         if (_settings.IslandEnabled) ShowIsland();
     }
+
+    public bool StartHidden { get; init; }
 
     private float[] ReadSpectrum()
     {
@@ -960,6 +986,167 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (SearchText.Length > 0) SearchText = "";
         await ScanAsync(silent: false);
     }
+
+    private void UploadCloud_Click(object sender, RoutedEventArgs e) => OpenCloudPanel(upload: true);
+
+    private void DownloadCloud_Click(object sender, RoutedEventArgs e) => OpenCloudPanel(upload: false);
+
+    private void CloudClose_Click(object sender, RoutedEventArgs e) => IsCloudOverlayOpen = false;
+
+    private void CloudSelectAll_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var item in _cloudItems) item.IsSelected = true;
+    }
+
+    private void OpenCloudPanel(bool upload)
+    {
+        if (string.IsNullOrWhiteSpace(_settings.Folder) || !Directory.Exists(_settings.Folder))
+        {
+            ShowToast("No library yet", "Choose your music folder first, then download Velvet Cloud.");
+            return;
+        }
+
+        _cloudUpload = upload;
+        _cloudItems.Clear();
+        CloudTitle = upload ? "Publish to Velvet Cloud" : "Velvet Cloud";
+        CloudPathText = "velvet-cloud  ·  hosted on GitHub";
+        CloudSummary = "Reading Velvet Cloud…";
+        CloudActionText = upload ? "Publish selected" : "Download selected";
+        IsCloudOverlayOpen = true;
+        _ = LoadCloudPanelAsync(upload);
+    }
+
+    private async Task LoadCloudPanelAsync(bool upload)
+    {
+        try
+        {
+            var cloud = await CloudLibraryService.GetCloudAsync(true, CancellationToken.None);
+            if (upload)
+            {
+                foreach (var entry in CloudLibraryService.MissingRemotely(_settings.Folder!, cloud))
+                {
+                    _cloudItems.Add(new CloudTrack
+                    {
+                        Name = entry.Name,
+                        SizeText = FormatSize(entry.Size),
+                        SizeBytes = entry.Size,
+                        LocalPath = Path.Combine(_settings.Folder!, entry.Name)
+                    });
+                }
+            }
+            else
+            {
+                foreach (var entry in CloudLibraryService.MissingLocally(cloud, _settings.Folder!))
+                {
+                    _cloudItems.Add(new CloudTrack
+                    {
+                        Name = entry.Name,
+                        SizeText = FormatSize(entry.Size),
+                        SizeBytes = entry.Size,
+                        Url = entry.Url
+                    });
+                }
+            }
+
+            CloudSummary = _cloudItems.Count == 0
+                ? upload
+                    ? "Every track in this library is already in Velvet Cloud."
+                    : $"Velvet Cloud is in sync. {cloud.Count} tracks available."
+                : $"{_cloudItems.Count} track{(_cloudItems.Count == 1 ? "" : "s")} " +
+                  (upload ? "not published yet." : "not in this library yet.");
+        }
+        catch (Exception exception)
+        {
+            CloudSummary = $"Velvet Cloud is unreachable. {exception.Message}";
+        }
+    }
+
+    private async void CloudRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cloudBusy) return;
+
+        var selected = _cloudItems.Where(item => item.IsSelected).ToList();
+        if (selected.Count == 0)
+        {
+            ShowToast("Nothing selected", "Tick at least one track.");
+            return;
+        }
+
+        _cloudBusy = true;
+        CloudActionText = _cloudUpload ? "Publishing…" : "Downloading…";
+        var upload = _cloudUpload;
+
+        try
+        {
+            if (upload)
+            {
+                var cloud = (await CloudLibraryService.GetCloudAsync(true, CancellationToken.None)).ToList();
+                foreach (var item in selected)
+                {
+                    item.Status = "Publishing";
+                    var entry = await CloudLibraryService.UploadAsync(item.LocalPath, item, CancellationToken.None);
+                    if (entry is not null)
+                    {
+                        cloud.RemoveAll(existing =>
+                            string.Equals(existing.Name, entry.Name, StringComparison.OrdinalIgnoreCase));
+                        cloud.Add(entry);
+                    }
+                    item.Status = "Published";
+                    item.Progress = 1;
+                    item.IsSelected = false;
+                }
+                await CloudLibraryService.PublishManifestAsync(cloud, CancellationToken.None);
+            }
+            else
+            {
+                foreach (var item in selected)
+                {
+                    item.Status = "Downloading";
+                    var entry = new CloudLibraryService.CloudEntry(item.Name, item.Url, item.SizeBytes);
+                    await CloudLibraryService.DownloadAsync(entry, _settings.Folder!, item,
+                        CancellationToken.None);
+                    item.Status = "Done";
+                    item.IsSelected = false;
+                }
+                await ScanAsync(silent: true);
+            }
+
+            IsCloudOverlayOpen = false;
+            ShowToast(upload ? "Velvet Cloud updated" : "Downloaded from Velvet Cloud",
+                $"{selected.Count} track{(selected.Count == 1 ? "" : "s")} " +
+                (upload ? "published." : "added to your library."));
+        }
+        catch (Exception exception)
+        {
+            ShowToast("Velvet Cloud", exception.Message);
+        }
+        finally
+        {
+            _cloudBusy = false;
+            CloudActionText = upload ? "Publish selected" : "Download selected";
+        }
+    }
+
+    private async void RecommendCloudSync()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.Folder) || !Directory.Exists(_settings.Folder)) return;
+        try
+        {
+            var cloud = await CloudLibraryService.GetCloudAsync(force: false, CancellationToken.None);
+            var count = CloudLibraryService.MissingLocally(cloud, _settings.Folder!).Count;
+            if (count == 0) return;
+            ShowToast("Music in Velvet Cloud",
+                $"{count} cloud track{(count == 1 ? "" : "s")} aren't in this library. Use the download button in the top bar.");
+        }
+        catch
+        {
+            // Offline launches stay quiet.
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes >= 1L << 20
+        ? $"{bytes / (double)(1 << 20):0.0} MB"
+        : $"{Math.Max(1, bytes / 1024)} KB";
 
     private void Accent_Click(object sender, RoutedEventArgs e)
     {

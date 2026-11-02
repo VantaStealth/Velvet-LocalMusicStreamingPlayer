@@ -13,6 +13,7 @@ public partial class App : Application
 {
     private Mutex? _instanceMutex;
     private Forms.NotifyIcon? _tray;
+    private VolumeHudWindow? _volumeHud;
     private bool _trayHintShown;
 
     /// <summary>True once the tray's Quit command (or a Windows session end) is closing the app.</summary>
@@ -55,10 +56,54 @@ public partial class App : Application
             args.Handled = true;
         };
 
-        var window = new MainWindow();
+        var startHidden = e.Args.Any(arg =>
+            string.Equals(arg, "--tray", StringComparison.OrdinalIgnoreCase));
+        var window = new MainWindow { StartHidden = startHidden };
         MainWindow = window;
-        window.Show();
+        EnsureStartupEntry();
+
+        if (startHidden)
+        {
+            // Loaded still runs (library scan, island state), but nothing is shown.
+            window.WindowState = WindowState.Minimized;
+            window.ShowInTaskbar = false;
+            window.Opacity = 0;
+            window.Show();
+            window.Hide();
+            window.Opacity = 1;
+            window.ShowInTaskbar = true;
+        }
+        else
+        {
+            window.Show();
+        }
+
         SetupTray(window);
+
+        _volumeHud = new VolumeHudWindow();
+        GlobalVolumeKeys.Start(_volumeHud);
+    }
+
+    private static void EnsureStartupEntry()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return;
+            if (exe.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase)) return;
+
+            using var run = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
+            if (run is null) return;
+
+            var command = $"\"{exe}\" --tray";
+            if (!string.Equals(run.GetValue("Velvet") as string, command, StringComparison.Ordinal))
+                run.SetValue("Velvet", command, RegistryValueKind.String);
+        }
+        catch
+        {
+            // Autostart is optional; a locked registry must not block the app.
+        }
     }
 
     private void SetupTray(MainWindow window)
@@ -173,6 +218,10 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        GlobalVolumeKeys.Stop();
+        _volumeHud?.Close();
+        _volumeHud = null;
+
         if (_tray is not null)
         {
             _tray.Visible = false;

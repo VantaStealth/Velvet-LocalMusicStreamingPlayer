@@ -453,7 +453,7 @@ private fun ExpandedMixer(
             )
         }
         Text(
-            text = "Trims only Velvet, independent of the media stream.",
+            text = "Trims or boosts only Velvet, independent of the media stream.",
             style = MaterialTheme.typography.bodySmall,
             color = TextTertiary
         )
@@ -462,13 +462,14 @@ private fun ExpandedMixer(
             value = appVolume,
             onChange = onAppVolume,
             color = accent.primary,
-            bright = accent.bright
+            bright = accent.bright,
+            max = 1.5f
         )
 
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "Android shares one media stream across apps. Velvet can separate its own " +
-                "channel; app-by-app levels for other players need root.",
+            text = "Slide past 100% to push Velvet above a game or video. Android shares one " +
+                "media stream across apps, so lowering the other app alone needs root.",
             style = MaterialTheme.typography.bodySmall,
             color = TextTertiary.copy(alpha = 0.85f)
         )

@@ -15,6 +15,8 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.velvet.music.data.CloudApi
+import com.velvet.music.data.CloudEntry
 import com.velvet.music.data.LibraryRepository
 import com.velvet.music.data.Prefs
 import com.velvet.music.data.Track
@@ -51,6 +53,35 @@ data class LibraryState(
     val tracks: List<Track> = emptyList(),
     val scan: ScanState = ScanState()
 )
+
+data class CloudItem(
+    val name: String,
+    val url: String,
+    val sizeBytes: Long,
+    val selected: Boolean = true,
+    val progress: Float = 0f,
+    val status: String = "",
+    val failed: Boolean = false
+) {
+    val sizeLabel: String
+        get() = when {
+            sizeBytes >= 1_073_741_824L -> String.format("%.1f GB", sizeBytes / 1_073_741_824.0)
+            sizeBytes >= 1_048_576 -> String.format("%.1f MB", sizeBytes / 1_048_576.0)
+            sizeBytes >= 1024 -> "${sizeBytes / 1024} KB"
+            else -> "$sizeBytes B"
+        }
+}
+
+data class CloudState(
+    val open: Boolean = false,
+    val items: List<CloudItem> = emptyList(),
+    val loading: Boolean = false,
+    val busy: Boolean = false,
+    val message: String? = null,
+    val suggest: Int = 0
+) {
+    val selectedCount: Int get() = items.count { it.selected }
+}
 
 data class QueueEntry(
     val mediaId: String,
@@ -104,6 +135,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _appVolume = MutableStateFlow(prefs.appVolume)
     val appVolume: StateFlow<Float> = _appVolume.asStateFlow()
 
+    private val _cloud = MutableStateFlow(CloudState())
+    val cloud: StateFlow<CloudState> = _cloud.asStateFlow()
+
     val spectrum: StateFlow<FloatArray> = SpectrumBus.bands
     val spectrumLive: StateFlow<Boolean> = SpectrumBus.live
 
@@ -115,6 +149,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var controller: MediaController? = null
     private var scanJob: Job? = null
     private var autoSyncJob: Job? = null
+    private var cloudJob: Job? = null
+    private var lastCloudSuggestion = 0L
     private var pendingPlay: Pair<List<Track>, Int>? = null
     @Volatile
     private var foreground = false
@@ -138,6 +174,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     autoSync(force = true)
                 }
+                refreshSuggestion(force = true)
             }
         }
     }
@@ -308,6 +345,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onAppForeground() {
         foreground = true
         autoSync()
+        refreshSuggestion()
     }
 
     fun onAppBackground() {
@@ -400,10 +438,134 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setAppVolume(value: Float) {
-        val volume = value.coerceIn(0f, 1f)
+        val volume = value.coerceIn(0f, 1.5f)
         prefs.appVolume = volume
         _appVolume.value = volume
         controller?.volume = volume
+    }
+
+    fun openCloud() {
+        _cloud.update { it.copy(open = true, message = null) }
+        loadCloudList()
+    }
+
+    fun closeCloud() {
+        if (_cloud.value.busy) return
+        _cloud.update { it.copy(open = false) }
+    }
+
+    fun toggleCloudItem(index: Int) {
+        if (_cloud.value.busy) return
+        _cloud.update { state ->
+            state.copy(
+                items = state.items.mapIndexed { i, item ->
+                    if (i == index) item.copy(selected = !item.selected) else item
+                }
+            )
+        }
+    }
+
+    fun selectAllCloud(selected: Boolean) {
+        if (_cloud.value.busy) return
+        _cloud.update { state -> state.copy(items = state.items.map { it.copy(selected = selected) }) }
+    }
+
+    private fun loadCloudList() {
+        val libraryUri = _library.value.folderUri ?: return
+        cloudJob?.cancel()
+        cloudJob = viewModelScope.launch {
+            _cloud.update { it.copy(loading = true, message = null, items = emptyList()) }
+            val localNames = runCatching {
+                repository.listAudio(Uri.parse(libraryUri), recursive = true)
+            }.getOrDefault(emptyList()).map { CloudApi.key(it.name) }.toSet()
+            runCatching {
+                CloudApi.manifest()
+                    .filter { CloudApi.key(it.name) !in localNames }
+                    .sortedBy { it.name.lowercase() }
+            }.onSuccess { entries ->
+                _cloud.update { state ->
+                    state.copy(
+                        loading = false,
+                        items = entries.map { CloudItem(it.name, it.url, it.sizeBytes) }
+                    )
+                }
+            }.onFailure { error ->
+                _cloud.update {
+                    it.copy(
+                        loading = false,
+                        message = error.message ?: "Velvet Cloud is unreachable right now."
+                    )
+                }
+            }
+        }
+    }
+
+    fun runCloud() {
+        val state = _cloud.value
+        if (state.busy || state.loading) return
+        val libraryUri = _library.value.folderUri ?: return
+        val targets = state.items.filter { it.selected }
+        if (targets.isEmpty()) return
+        cloudJob = viewModelScope.launch {
+            _cloud.update { it.copy(busy = true, message = null) }
+            var copied = 0
+            for (item in targets) {
+                if (!isActive) break
+                updateCloudItem(item.url) {
+                    it.copy(progress = 0f, status = "Downloading…", failed = false)
+                }
+                val result = CloudApi.download(
+                    context = app,
+                    entry = CloudEntry(item.name, item.url, item.sizeBytes),
+                    destTreeUri = Uri.parse(libraryUri)
+                ) { fraction ->
+                    updateCloudItem(item.url) {
+                        it.copy(progress = fraction.coerceIn(0f, 1f), status = "")
+                    }
+                }
+                if (result.isSuccess) {
+                    copied++
+                    updateCloudItem(item.url) { it.copy(progress = 1f, status = "Done") }
+                } else {
+                    updateCloudItem(item.url) {
+                        it.copy(
+                            status = result.exceptionOrNull()?.message ?: "Failed",
+                            failed = true
+                        )
+                    }
+                }
+            }
+            _cloud.update {
+                it.copy(
+                    busy = false,
+                    message = "Downloaded $copied of ${targets.size} track${if (targets.size == 1) "" else "s"}.",
+                    suggest = 0
+                )
+            }
+            if (copied > 0) startScan(Uri.parse(libraryUri))
+        }
+    }
+
+    private fun updateCloudItem(url: String, transform: (CloudItem) -> CloudItem) {
+        _cloud.update { state ->
+            state.copy(items = state.items.map { if (it.url == url) transform(it) else it })
+        }
+    }
+
+    fun refreshSuggestion(force: Boolean = false) {
+        val libraryUri = _library.value.folderUri ?: return
+        val now = System.currentTimeMillis()
+        if (!force && now - lastCloudSuggestion < 60_000L) return
+        lastCloudSuggestion = now
+        viewModelScope.launch {
+            val localNames = runCatching {
+                repository.listAudio(Uri.parse(libraryUri), recursive = true)
+            }.getOrDefault(emptyList()).map { CloudApi.key(it.name) }.toSet()
+            val missing = runCatching { CloudApi.manifest() }
+                .getOrDefault(emptyList())
+                .count { CloudApi.key(it.name) !in localNames }
+            _cloud.update { it.copy(suggest = missing) }
+        }
     }
 
     fun refreshSpectrumCapture() {

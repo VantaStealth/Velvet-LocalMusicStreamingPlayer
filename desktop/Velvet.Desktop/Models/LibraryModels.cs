@@ -31,6 +31,46 @@ public sealed class Track
     public string NumberText => TrackNumber > 0 ? TrackNumber.ToString("00") : "··";
 }
 
+public sealed class CloudTrack : System.ComponentModel.INotifyPropertyChanged
+{
+    private bool _isSelected = true;
+    private double _progress;
+    private string _status = "Ready";
+
+    public string Name { get; init; } = "";
+    public string SizeText { get; init; } = "";
+    public string Url { get; init; } = "";
+    public string LocalPath { get; init; } = "";
+    public long SizeBytes { get; init; }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => Set(ref _isSelected, value, nameof(IsSelected));
+    }
+
+    public double Progress
+    {
+        get => _progress;
+        set => Set(ref _progress, value, nameof(Progress));
+    }
+
+    public string Status
+    {
+        get => _status;
+        set => Set(ref _status, value, nameof(Status));
+    }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    private void Set<T>(ref T field, T value, string name)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+    }
+}
+
 public sealed class AlbumGroup
 {
     public string Name { get; init; } = "";
@@ -78,6 +118,8 @@ public sealed class AppSettings
     public double IslandOpacity { get; set; } = 0.92;
     public bool IslandVertical { get; set; }
     public bool IslandMinimal { get; set; }
+    public double IslandMinimalWidth { get; set; } = 296;
+    public string? CloudFolder { get; set; }
 }
 
 public enum RepeatMode

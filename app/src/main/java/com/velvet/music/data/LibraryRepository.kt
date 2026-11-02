@@ -585,6 +585,25 @@ class LibraryRepository(context: Context) {
         runCatching { DocumentFile.fromTreeUri(appContext, treeUri)?.name }
             .getOrNull() ?: "Music"
 
+    suspend fun listAudio(treeUri: Uri, recursive: Boolean = false): List<AudioDoc> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val root = DocumentFile.fromTreeUri(appContext, treeUri) ?: return@runCatching emptyList()
+                val files = mutableListOf<DocumentFile>()
+                if (recursive) {
+                    collectAudioFiles(root, files, 0)
+                } else {
+                    root.listFiles()
+                        .filter { it.isFile && isAudio(it.name.orEmpty()) }
+                        .forEach(files::add)
+                }
+                files.mapNotNull { doc ->
+                    val name = doc.name ?: return@mapNotNull null
+                    AudioDoc(name, doc.uri, doc.length())
+                }
+            }.getOrDefault(emptyList())
+        }
+
     private fun toJson(track: Track): JSONObject = JSONObject().apply {
         put("id", track.id)
         put("uri", track.uri)
@@ -626,3 +645,9 @@ class LibraryRepository(context: Context) {
         )
     }
 }
+
+data class AudioDoc(
+    val name: String,
+    val uri: Uri,
+    val sizeBytes: Long
+)

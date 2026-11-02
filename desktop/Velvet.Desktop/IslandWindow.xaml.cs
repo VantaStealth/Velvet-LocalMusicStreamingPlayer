@@ -38,6 +38,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
     private double _opacityValue;
     private bool _vertical;
     private bool _minimal;
+    private double _minimalWidth = MinimalWidth;
     private bool _opacityDragging;
     private double _corner = 34;
     private bool _closingForApp;
@@ -67,6 +68,8 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
         _opacityValue = Math.Clamp(settings.IslandOpacity, 0.35, 1);
         _vertical = settings.IslandVertical;
         _minimal = settings.IslandMinimal;
+        _minimalWidth = Math.Clamp(
+            settings.IslandMinimalWidth > 0 ? settings.IslandMinimalWidth : MinimalWidth, 236, 620);
 
         IslandScale.ScaleX = _scaleX;
         IslandScale.ScaleY = _scaleY;
@@ -97,6 +100,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
         ApplyLayout();
         PlaceInitial();
         Loaded += (_, _) => ApplyLayout();
+        LocationChanged += (_, _) => UpdateSnapMark();
         Closed += OnClosed;
     }
 
@@ -230,7 +234,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
 
     private void ApplyLayout()
     {
-        var baseWidth = _minimal ? MinimalWidth : ExpandedWidth;
+        var baseWidth = _minimal ? _minimalWidth : ExpandedWidth;
         var baseHeight = _minimal ? MinimalHeight : (_settingsOpen ? SettingsHeight : ExpandedHeight);
 
         LayoutHost.Width = baseWidth;
@@ -243,6 +247,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
         Ornaments.Visibility = _minimal ? Visibility.Collapsed : Visibility.Visible;
         Hairline.Visibility = _minimal ? Visibility.Collapsed : Visibility.Visible;
         Grip.Visibility = _minimal ? Visibility.Collapsed : Visibility.Visible;
+        MinimalGrip.Visibility = _minimal ? Visibility.Visible : Visibility.Collapsed;
 
         Card.Background = (Brush)FindResource(_minimal ? "IslandMinimalFill" : "IslandFill");
         Card.BorderBrush = _minimal
@@ -283,6 +288,21 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
         // recentre it vertically, otherwise it drifts away from the screen top.
         if (topFlush) Top = SystemParameters.WorkArea.Top;
         ClampToScreen();
+        UpdateSnapMark();
+    }
+
+    private void UpdateSnapMark()
+    {
+        if (!_minimal || double.IsNaN(Left) || double.IsNaN(Top) || Width <= 0)
+        {
+            SnapMark.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var area = SystemParameters.WorkArea;
+        var centered = Math.Abs(Left + Width / 2 - (area.Left + area.Width / 2)) <= 4;
+        var atTop = Math.Abs(Top - area.Top) <= 4;
+        SnapMark.Visibility = centered && atTop ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateClip()
@@ -311,6 +331,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
 
         if (Math.Abs(Top - area.Top) <= 30) Top = area.Top;
         ClampToScreen();
+        UpdateSnapMark();
     }
 
     private void ClampToScreen()
@@ -361,6 +382,7 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
         if (Math.Abs(Left - centeredLeft) <= 56) Left = centeredLeft;
 
         ClampToScreen();
+        UpdateSnapMark();
 
         _settings.IslandLeft = Left;
         _settings.IslandTop = Top;
@@ -408,6 +430,21 @@ public partial class IslandWindow : Window, INotifyPropertyChanged
         _settings.IslandScaleX = _scaleX;
         _settings.IslandScaleY = _scaleY;
         ApplyLayout();
+    }
+
+    private void MinimalGrip_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (!_minimal) return;
+
+        var oldWidth = Width;
+        _minimalWidth = Math.Clamp(_minimalWidth + e.HorizontalChange * 2, 236, 620);
+        ApplyLayout();
+        Left -= (Width - oldWidth) / 2;
+        ClampToScreen();
+        UpdateSnapMark();
+
+        _settings.IslandMinimalWidth = _minimalWidth;
+        _settings.IslandLeft = Left;
     }
 
     private void Grip_DragCompleted(object sender, DragCompletedEventArgs e)

@@ -31,12 +31,13 @@ fun GlowSlider(
     onChange: (Float) -> Unit,
     color: Color,
     bright: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    max: Float = 1f
 ) {
     var width by remember { mutableFloatStateOf(1f) }
     val emit: (Float) -> Unit = { x ->
         val fraction = ((x - width * 0.04f) / (width * 0.92f)).coerceIn(0f, 1f)
-        onChange(fraction)
+        onChange(fraction * max)
     }
     Canvas(
         modifier
@@ -51,7 +52,7 @@ fun GlowSlider(
                 }
             }
     ) {
-        val fraction = value.coerceIn(0f, 1f)
+        val fraction = (value / max.coerceAtLeast(0.01f)).coerceIn(0f, 1f)
         val inset = size.width * 0.04f
         val startX = inset
         val endX = size.width - inset

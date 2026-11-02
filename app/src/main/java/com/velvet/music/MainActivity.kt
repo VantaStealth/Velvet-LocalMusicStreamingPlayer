@@ -2,9 +2,11 @@ package com.velvet.music
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -106,6 +108,10 @@ class MainActivity : ComponentActivity() {
         viewModel.onAppBackground()
         super.onStop()
     }
+
+    fun openVolumeSettings() {
+        runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+    }
 }
 
 @Composable
@@ -120,6 +126,7 @@ private fun VelvetApp(viewModel: MainViewModel, volumeKeys: MutableSharedFlow<In
         val spectrumLive by viewModel.spectrumLive.collectAsStateWithLifecycle()
         val spectrumGain by viewModel.spectrumGain.collectAsStateWithLifecycle()
         val appVolume by viewModel.appVolume.collectAsStateWithLifecycle()
+        val cloud by viewModel.cloud.collectAsStateWithLifecycle()
         val albums = remember(library.tracks) { buildAlbums(library.tracks) }
 
         val context = LocalContext.current
@@ -155,8 +162,12 @@ private fun VelvetApp(viewModel: MainViewModel, volumeKeys: MutableSharedFlow<In
             if (showPlayer) requestAudioPermission(context, audioLauncher)
         }
 
-        BackHandler(enabled = showPlayer || selectedAlbum != null) {
-            if (showPlayer) showPlayer = false else selectedAlbumKey = null
+        BackHandler(enabled = cloud.open || showPlayer || selectedAlbum != null) {
+            when {
+                cloud.open -> viewModel.closeCloud()
+                showPlayer -> showPlayer = false
+                else -> selectedAlbumKey = null
+            }
         }
 
         Box(Modifier.fillMaxSize().background(Ink)) {
@@ -186,7 +197,14 @@ private fun VelvetApp(viewModel: MainViewModel, volumeKeys: MutableSharedFlow<In
                     },
                     onToggleFavorite = viewModel::toggleFavorite,
                     onOpenPlayer = { showPlayer = true },
-                    onOpenAlbum = { album -> selectedAlbumKey = album.key }
+                    onOpenAlbum = { album -> selectedAlbumKey = album.key },
+                    onOpenVolumeSettings = { (context as? MainActivity)?.openVolumeSettings() },
+                    cloud = cloud,
+                    onCloudDownload = viewModel::openCloud,
+                    onCloudClose = viewModel::closeCloud,
+                    onCloudToggle = viewModel::toggleCloudItem,
+                    onCloudSelectAll = viewModel::selectAllCloud,
+                    onCloudRun = viewModel::runCloud
                 )
             }
 

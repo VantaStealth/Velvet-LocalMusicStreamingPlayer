@@ -2,4 +2,6 @@
     <string name="app_name">Velvet</string>
     <string name="notification_channel_name">Velvet playback</string>
     <string name="notification_channel_description">Now playing details and playback controls</string>
+    <string name="volume_service_label">Velvet volume controller</string>
+    <string name="volume_service_description">Replaces the system volume panel with Velvet\'s glass rail everywhere on your phone. Velvet only reads volume key presses and never reads screen content.</string>
 </resources>
