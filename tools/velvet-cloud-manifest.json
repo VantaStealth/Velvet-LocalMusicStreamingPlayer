@@ -1,6 +1,6 @@
 {
   "name": "Velvet Cloud",
-  "version": 5,
+  "version": 6,
   "updated": "2026-11-02",
   "tracks": [
     {
@@ -29,10 +29,11 @@
     },
     {
       "name": "Bella Ciao.mp3",
-      "size": 4167759,
+      "size": 4166708,
       "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Bella.Ciao.mp3",
       "title": "Bella Ciao (Remix)",
-      "artist": "Leandro Renzi"
+      "artist": "Leandro Renzi",
+      "album": "Bella Ciao"
     },
     {
       "name": "Belly Dancer.mp3",
@@ -81,6 +82,15 @@
       "title": "Training Season",
       "artist": "Dua Lipa",
       "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/Dua.Lipa.-.Training.Season.Official.Music.Video.ZjBZ8MUnB0E.lrc"
+    },
+    {
+      "name": "From The Start.mp3",
+      "size": 5336400,
+      "url": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/From.The.Start.mp3",
+      "title": "From The Start",
+      "artist": "Laufey",
+      "album": "Bewitched",
+      "lyrics": "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/From.The.Start.lrc"
     },
     {
       "name": "Happy Nation.mp3",

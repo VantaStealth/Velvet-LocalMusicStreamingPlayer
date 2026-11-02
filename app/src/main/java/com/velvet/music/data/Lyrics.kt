@@ -99,6 +99,11 @@ object Lyrics {
     ): List<LyricLine> = withContext(Dispatchers.IO) {
         if (mediaId.isBlank()) return@withContext emptyList()
 
+        bundled(context, mediaId, title)?.let { body ->
+            val lines = parse(body)
+            if (lines.isNotEmpty() && fitsDuration(lines, durationMs)) return@withContext lines
+        }
+
         sidecar(context, mediaId)?.let { body ->
             val lines = parse(body)
             if (lines.isNotEmpty() && fitsDuration(lines, durationMs)) return@withContext lines
@@ -165,6 +170,28 @@ object Lyrics {
         runCatching {
             File(cacheDir(context), "${cacheKey(title, artist, durationMs)}.lrc").delete()
         }.let { }
+    }
+
+    /**
+     * Accurate sidecars ship inside the APK, so a cloud track shows synced
+     * lyrics the moment playback starts, even with no network and no download.
+     */
+    private fun bundled(context: Context, mediaId: String, title: String): String? {
+        val uri = Uri.parse(mediaId)
+        val name = runCatching { DocumentFile.fromSingleUri(context, uri)?.name }.getOrNull()
+            ?: uri.lastPathSegment
+        val keys = buildList {
+            if (!name.isNullOrBlank()) add(CloudApi.key(name.substringBeforeLast('.')))
+            if (title.isNotBlank()) add(CloudApi.key(title))
+        }
+        for (key in keys.distinct()) {
+            if (key.isBlank()) continue
+            val body = runCatching {
+                context.assets.open("lyrics/$key.lrc").bufferedReader().use { it.readText() }
+            }.getOrNull()
+            if (!body.isNullOrBlank()) return body
+        }
+        return null
     }
 
     private fun sidecar(context: Context, mediaId: String): String? = runCatching {

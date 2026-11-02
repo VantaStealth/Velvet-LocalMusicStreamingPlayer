@@ -448,7 +448,7 @@ for (const asset of removedAssets.values()) {
 
 const manifest = {
   name: "Velvet Cloud",
-  version: 5,
+  version: 6,
   updated: new Date().toISOString().slice(0, 10),
   tracks
 };
