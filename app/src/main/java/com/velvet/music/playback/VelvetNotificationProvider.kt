@@ -76,6 +76,7 @@ class VelvetNotificationProvider(
             .setSmallIcon(R.drawable.ic_stat_velvet)
             .setContentTitle(title)
             .setContentText(artist.ifBlank { album.ifBlank { "Velvet" } })
+            .setTicker(if (artist.isBlank()) title else "$title — $artist")
             .setLargeIcon(largeIcon)
             .setContentIntent(session.sessionActivity)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
@@ -84,6 +85,7 @@ class VelvetNotificationProvider(
             .setOnlyAlertOnce(true)
             .setOngoing(playing)
             .setSilent(true)
+            .setAutoCancel(false)
             .setColor(accent)
             .setColorized(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -110,7 +112,13 @@ class VelvetNotificationProvider(
                 )
             )
 
-        if (album.isNotBlank() && artist.isNotBlank()) builder.setSubText(album)
+        if (album.isNotBlank() && artist.isNotBlank()) {
+            val position = player.currentMediaItemIndex + 1
+            val total = player.mediaItemCount
+            builder.setSubText(
+                if (total > 1) "$album · $position/$total" else album
+            )
+        }
 
         return MediaNotification(
             DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID,

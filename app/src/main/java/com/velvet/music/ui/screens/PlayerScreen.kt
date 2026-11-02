@@ -55,8 +55,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -95,10 +98,10 @@ import com.velvet.music.ui.components.DiscoLights
 import com.velvet.music.ui.components.EqualizerBars
 import com.velvet.music.ui.components.FilmGrain
 import com.velvet.music.ui.components.GlowSlider
+import com.velvet.music.ui.components.ReactiveVeinOverlay
 import com.velvet.music.ui.components.SectionLabel
 import com.velvet.music.ui.components.SpectrumRing
 import com.velvet.music.ui.components.SpectrumStrip
-import com.velvet.music.ui.components.VeinOverlay
 import com.velvet.music.ui.components.VelvetSeekBar
 import com.velvet.music.ui.components.VinylDisc
 import com.velvet.music.ui.components.formatTime
@@ -113,6 +116,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -120,7 +124,7 @@ import kotlin.math.sin
 fun PlayerScreen(
     player: PlayerState,
     isFavorite: Boolean,
-    bands: FloatArray,
+    spectrum: State<FloatArray>,
     spectrumLive: Boolean,
     spectrumGain: Float,
     onSpectrumGain: (Float) -> Unit,
@@ -140,31 +144,46 @@ fun PlayerScreen(
     var lyricsVisible by remember { mutableStateOf(false) }
     var lyricLines by remember { mutableStateOf<List<LyricLine>>(emptyList()) }
     var lyricMessage by remember { mutableStateOf<String?>(null) }
+    var lyricAttempt by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(player.mediaId) {
+    LaunchedEffect(player.mediaId, lyricAttempt) {
         lyricLines = emptyList()
         lyricMessage = null
-        if (player.mediaId.isNotBlank()) {
-            lyricMessage = "Finding synced lyrics…"
-            val loaded = withContext(Dispatchers.IO) {
-                Lyrics.load(
-                    context,
-                    player.mediaId,
-                    player.title,
-                    player.artist,
-                    player.album,
-                    player.durationMs
-                )
-            }
-            lyricLines = loaded
-            lyricMessage = if (loaded.isEmpty()) {
-                "No synced lyrics for this track yet. Drop a .lrc file beside it or add one to Velvet Cloud."
-            } else {
-                null
-            }
+        if (player.mediaId.isBlank()) return@LaunchedEffect
+
+        val local = withContext(Dispatchers.IO) {
+            Lyrics.loadLocal(
+                context,
+                player.mediaId,
+                player.title,
+                player.artist,
+                player.durationMs
+            )
+        }
+        if (local.isNotEmpty()) {
+            lyricLines = local
+            return@LaunchedEffect
+        }
+
+        lyricMessage = "Finding synced lyrics…"
+        val remote = withContext(Dispatchers.IO) {
+            Lyrics.loadRemote(
+                context,
+                player.mediaId,
+                player.title,
+                player.artist,
+                player.album,
+                player.durationMs
+            )
+        }
+        lyricLines = remote
+        lyricMessage = if (remote.isEmpty()) {
+            "No synced lyrics for this track yet. Velvet can also read a .lrc file beside the audio."
+        } else {
+            null
         }
     }
 
@@ -172,14 +191,6 @@ fun PlayerScreen(
         (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f)
     } else 0f
 
-    val bass = remember(bands) {
-        val count = minOf(8, bands.size)
-        if (count == 0) 0f else {
-            var sum = 0f
-            for (index in 0 until count) sum += bands[index]
-            (sum / count).coerceIn(0f, 1f)
-        }
-    }
     val vinylAngle = rememberVinylAngle(player.isPlaying)
     val backdropTransition = rememberInfiniteTransition(label = "backdrop")
     val backdropScale by backdropTransition.animateFloat(
@@ -251,17 +262,21 @@ fun PlayerScreen(
             intensity = 0.85f
         )
         FilmGrain(Modifier.fillMaxSize(), alpha = 0.035f)
-        VeinOverlay(
+        ReactiveVeinOverlay(
+            spectrum = spectrum,
+            playing = player.isPlaying,
             color = accent.primary,
             modifier = Modifier.fillMaxSize(),
-            alpha = 0.10f + if (player.isPlaying) bass * 0.10f else 0f,
             veinCount = 8,
             seed = 23
         )
         DiscoLights(
             active = disco,
             playing = player.isPlaying,
-            bass = bass,
+            spectrum = spectrum,
+            primary = accent.primary,
+            bright = accent.bright,
+            deep = accent.deep,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -330,7 +345,7 @@ fun PlayerScreen(
                         .aspectRatio(1f)
                 )
                 SpectrumRing(
-                    bands = bands,
+                    bands = spectrum,
                     color = accent.primary,
                     bright = accent.bright,
                     active = player.isPlaying,
@@ -421,7 +436,7 @@ fun PlayerScreen(
 
             Spacer(Modifier.height(12.dp))
             SpectrumStrip(
-                bands = bands,
+                bands = spectrum,
                 color = accent.primary,
                 bright = accent.bright,
                 active = player.isPlaying,
@@ -569,8 +584,10 @@ fun PlayerScreen(
                 LyricsPane(
                     lines = lyricLines,
                     positionMs = player.positionMs,
+                    playing = player.isPlaying,
                     message = lyricMessage,
                     bright = accent.bright,
+                    onRetry = { lyricAttempt++ },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -911,26 +928,67 @@ private fun QueueRow(
 private fun LyricsPane(
     lines: List<LyricLine>,
     positionMs: Long,
+    playing: Boolean,
     message: String?,
     bright: Color,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val active = if (lines.isEmpty()) {
-        -1
-    } else {
-        lines.indexOfLast { it.timeMs <= positionMs }.coerceAtLeast(0)
+    var smoothPosition by remember { mutableLongStateOf(positionMs) }
+    val activeIndex = remember { mutableIntStateOf(-1) }
+
+    // The clock and the active-line lookup live in one frame loop. Only the
+    // line index is observable state, so the pane recomposes when a line
+    // changes instead of sixty times a second.
+    LaunchedEffect(lines, playing) {
+        if (lines.isEmpty()) {
+            activeIndex.intValue = -1
+            return@LaunchedEffect
+        }
+        smoothPosition = positionMs
+        fun refresh() {
+            activeIndex.intValue = lines.indexOfLast { it.timeMs <= smoothPosition }
+                .coerceAtLeast(0)
+        }
+        refresh()
+        if (!playing) return@LaunchedEffect
+
+        var last = 0L
+        while (true) {
+            withFrameNanos { now ->
+                if (last != 0L) smoothPosition += (now - last) / 1_000_000L
+                last = now
+            }
+            refresh()
+        }
     }
+
+    LaunchedEffect(positionMs) {
+        if (lines.isEmpty()) return@LaunchedEffect
+        if (abs(positionMs - smoothPosition) > 450L) {
+            smoothPosition = positionMs
+            activeIndex.intValue = lines.indexOfLast { it.timeMs <= positionMs }
+                .coerceAtLeast(0)
+        }
+    }
+
+    val active = activeIndex.intValue
     val start = if (lines.size <= 5) 0 else (active - 2).coerceIn(0, lines.size - 5)
-    val transition = rememberInfiniteTransition(label = "lyricDust")
-    val dust by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(9000, easing = androidx.compose.animation.core.LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "lyricDustDrift"
-    )
+
+    // Drift is read only inside the draw lambda, so the pane redraws without
+    // recomposing while the dust moves.
+    val dust = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var last = 0L
+        while (true) {
+            withFrameNanos { now ->
+                if (last != 0L) {
+                    dust.floatValue = (dust.floatValue + (now - last) / 9_000_000_000f) % 1f
+                }
+                last = now
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -939,8 +997,10 @@ private fun LyricsPane(
             .border(1.dp, Hairline, RoundedCornerShape(20.dp))
     ) {
         Canvas(Modifier.matchParentSize()) {
+            val drift = dust.floatValue
+            val step = 1f / 26f
             for (index in 0 until 26) {
-                val progress = (dust + index / 26f) % 1f
+                val progress = (drift + index * step) % 1f
                 val x = size.width * ((index * 0.37f) % 1f) +
                     sin(progress * 2f * PI.toFloat() + index) * 14.dp.toPx()
                 val y = size.height * (1f - progress)
@@ -953,28 +1013,47 @@ private fun LyricsPane(
             }
         }
 
-        AnimatedContent(
-            targetState = start,
-            transitionSpec = {
-                (slideInVertically { it / 3 } + fadeIn()) togetherWith
-                    (slideOutVertically { -it / 3 } + fadeOut())
-            },
-            label = "lyricWindow"
-        ) { first ->
+        if (lines.isEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 16.dp, vertical = 18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (lines.isEmpty()) {
+                Text(
+                    text = message ?: "Lyrics load when this track starts.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary,
+                    textAlign = TextAlign.Center
+                )
+                if (message != null && message != "Finding synced lyrics…") {
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        text = message ?: "No lyrics for this track.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextTertiary,
-                        textAlign = TextAlign.Center
+                        text = "SEARCH AGAIN",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                        color = bright,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable(onClick = onRetry)
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
                     )
-                } else {
+                }
+            }
+        } else {
+            AnimatedContent(
+                targetState = start,
+                transitionSpec = {
+                    (slideInVertically { it / 3 } + fadeIn()) togetherWith
+                        (slideOutVertically { -it / 3 } + fadeOut())
+                },
+                label = "lyricWindow"
+            ) { first ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     lines.drop(first).take(5).forEachIndexed { offset, line ->
                         val current = first + offset == active
                         val emphasis by animateFloatAsState(

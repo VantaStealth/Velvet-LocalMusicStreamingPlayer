@@ -18,7 +18,6 @@ data class LyricLine(val timeMs: Long, val text: String)
 object Lyrics {
     private val stamp = Regex("""\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]""")
     private val tag = Regex("""\[[^\]]*]""")
-    private val misses = mutableSetOf<String>()
 
     fun parse(body: String): List<LyricLine> = buildList {
         for (raw in body.lineSequence()) {
@@ -40,17 +39,14 @@ object Lyrics {
     }.sortedBy { it.timeMs }
 
     /**
-     * Resolution order: an .lrc beside the audio, the cached copy, the cloud
-     * sidecar published next to the track, then a runtime lyrics lookup.
-     * Catalogues that only publish plain text are spread across the track so
-     * the pane still follows playback.
+     * Sidecar and disk cache only. This is instant, so the player can show local
+     * lyrics before any network work starts.
      */
-    suspend fun load(
+    suspend fun loadLocal(
         context: Context,
         mediaId: String,
         title: String,
         artist: String,
-        album: String,
         durationMs: Long
     ): List<LyricLine> = withContext(Dispatchers.IO) {
         if (mediaId.isBlank()) return@withContext emptyList()
@@ -60,27 +56,51 @@ object Lyrics {
             if (lines.isNotEmpty()) return@withContext lines
         }
 
-        val key = cacheKey(title, artist, durationMs)
-        readCache(context, key)?.let { body ->
+        readCache(context, cacheKey(title, artist, durationMs))?.let { body ->
             val lines = parse(body)
             if (lines.isNotEmpty()) return@withContext lines
         }
+        emptyList()
+    }
 
-        if (key in misses) return@withContext emptyList()
+    /**
+     * Cloud sidecar first, then a lyrics lookup. The whole pass shares one
+     * deadline so a slow catalogue can never leave the pane waiting.
+     */
+    suspend fun loadRemote(
+        context: Context,
+        mediaId: String,
+        title: String,
+        artist: String,
+        album: String,
+        durationMs: Long
+    ): List<LyricLine> = withContext(Dispatchers.IO) {
+        val key = cacheKey(title, artist, durationMs)
+        val deadline = System.nanoTime() / 1_000_000L + 10_000L
 
-        cloudSidecar(context, mediaId)?.let { body ->
+        cloudSidecar(context, mediaId, deadline)?.let { body ->
             writeCache(context, key, body)
             val lines = parse(body)
             if (lines.isNotEmpty()) return@withContext lines
         }
 
-        val online = fetchOnline(title, artist, album, durationMs)
-        if (online.isNullOrBlank()) {
-            misses += key
-            return@withContext emptyList()
-        }
+        val online = fetchOnline(title, artist, album, durationMs, deadline)
+            ?: return@withContext emptyList()
         writeCache(context, key, online)
         parse(online)
+    }
+
+    suspend fun load(
+        context: Context,
+        mediaId: String,
+        title: String,
+        artist: String,
+        album: String,
+        durationMs: Long
+    ): List<LyricLine> {
+        val local = loadLocal(context, mediaId, title, artist, durationMs)
+        if (local.isNotEmpty()) return local
+        return loadRemote(context, mediaId, title, artist, album, durationMs)
     }
 
     private fun sidecar(context: Context, mediaId: String): String? = runCatching {
@@ -96,20 +116,23 @@ object Lyrics {
             ?.use { it.readText() }
     }.getOrNull()
 
-    private suspend fun cloudSidecar(context: Context, mediaId: String): String? = runCatching {
-        val uri = Uri.parse(mediaId)
-        val name = DocumentFile.fromSingleUri(context, uri)?.name ?: return@runCatching null
-        val entry = CloudApi.manifest().firstOrNull { it.name.equals(name, ignoreCase = true) }
-            ?: return@runCatching null
-        val url = entry.lyrics?.takeIf { it.isNotBlank() } ?: return@runCatching null
-        downloadText(url)
-    }.getOrNull()
+    private suspend fun cloudSidecar(context: Context, mediaId: String, deadline: Long): String? =
+        runCatching {
+            val uri = Uri.parse(mediaId)
+            val name = DocumentFile.fromSingleUri(context, uri)?.name ?: return@runCatching null
+            val entry = CloudApi.manifest(budgetMs = deadline - nowMs())
+                .firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?: return@runCatching null
+            val url = entry.lyrics?.takeIf { it.isNotBlank() } ?: return@runCatching null
+            downloadText(url, deadline)
+        }.getOrNull()
 
     private fun fetchOnline(
         title: String,
         artist: String,
         album: String,
-        durationMs: Long
+        durationMs: Long,
+        deadline: Long
     ): String? {
         if (title.isBlank() || artist.isBlank()) return null
         val seconds = (durationMs / 1000L).toInt()
@@ -125,7 +148,7 @@ object Lyrics {
             if (seconds > 0) append("&duration=$seconds")
         }
         var plain: String? = null
-        requestJson(direct)?.let { body ->
+        requestJson(direct, deadline)?.let { body ->
             val item = runCatching { JSONObject(body) }.getOrNull()
             if (item != null) {
                 val synced = item.optString("syncedLyrics")
@@ -134,27 +157,36 @@ object Lyrics {
             }
         }
 
-        val search = "https://lrclib.net/api/search?q=" + encode("$artist $title")
-        val body = requestJson(search)
-        runCatching {
-            val results = org.json.JSONArray(body ?: return@runCatching null)
-            for (index in 0 until results.length()) {
-                val item = results.optJSONObject(index) ?: continue
-                val synced = item.optString("syncedLyrics")
-                if (synced.isNotBlank()) return synced
-                if (plain == null) {
-                    plain = item.optString("plainLyrics").takeIf { it.isNotBlank() }
+        if (nowMs() < deadline - 500L) {
+            val search = "https://lrclib.net/api/search?q=" + encode("$artist $title")
+            val body = requestJson(search, deadline)
+            runCatching {
+                val results = org.json.JSONArray(body ?: return@runCatching)
+                for (index in 0 until results.length()) {
+                    val item = results.optJSONObject(index) ?: continue
+                    val synced = item.optString("syncedLyrics")
+                    if (synced.isNotBlank()) return synced
+                    if (plain == null) {
+                        plain = item.optString("plainLyrics").takeIf { it.isNotBlank() }
+                    }
                 }
             }
-            null
-        }.getOrNull()?.let { return it }
+        }
 
-        return plainToPseudoLrc(plain, durationMs) ?: fetchOvh(title, artist, durationMs)
+        return plainToPseudoLrc(plain, durationMs) ?: fetchOvh(title, artist, durationMs, deadline)
     }
 
-    private fun fetchOvh(title: String, artist: String, durationMs: Long): String? {
-        val body = requestJson("https://api.lyrics.ovh/v1/${encode(artist)}/${encode(title)}")
-            ?: return null
+    private fun fetchOvh(
+        title: String,
+        artist: String,
+        durationMs: Long,
+        deadline: Long
+    ): String? {
+        if (nowMs() >= deadline - 500L) return null
+        val body = requestJson(
+            "https://api.lyrics.ovh/v1/${encode(artist)}/${encode(title)}",
+            deadline
+        ) ?: return null
         val lyrics = runCatching { JSONObject(body).optString("lyrics") }.getOrNull()
         return plainToPseudoLrc(lyrics?.takeIf { it.isNotBlank() }, durationMs)
     }
@@ -180,16 +212,18 @@ object Lyrics {
         }.joinToString("\n")
     }
 
-    private fun requestJson(url: String): String? {
-        for (attempt in 1..3) {
+    private fun requestJson(url: String, deadline: Long): String? {
+        for (attempt in 1..2) {
+            val remaining = deadline - nowMs()
+            if (remaining < 800L) return null
             val result = runCatching {
                 val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 8_000
-                    readTimeout = 10_000
+                    connectTimeout = minOf(4_000L, remaining).toInt()
+                    readTimeout = minOf(6_000L, remaining).toInt()
                     instanceFollowRedirects = true
                     setRequestProperty(
                         "User-Agent",
-                        "Velvet/1.9.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreaming)"
+                        "Velvet/1.10.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreaming)"
                     )
                     setRequestProperty("Accept", "application/json")
                 }
@@ -203,25 +237,31 @@ object Lyrics {
                 }
             }.getOrNull()
             if (result != null) return result.ifEmpty { null }
-            if (attempt < 3) Thread.sleep(320L * attempt)
+            if (attempt < 2) Thread.sleep(260L)
         }
         return null
     }
 
-    private fun downloadText(url: String): String? = runCatching {
-        val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 15_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "Velvet-Mobile")
-        }
-        try {
-            if (connection.responseCode !in 200..299) return@runCatching null
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            connection.disconnect()
-        }
-    }.getOrNull()
+    private fun downloadText(url: String, deadline: Long): String? {
+        val remaining = deadline - nowMs()
+        if (remaining < 800L) return null
+        return runCatching {
+            val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+                connectTimeout = minOf(4_000L, remaining).toInt()
+                readTimeout = minOf(6_000L, remaining).toInt()
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Velvet-Mobile")
+            }
+            try {
+                if (connection.responseCode !in 200..299) return@runCatching null
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrNull()
+    }
+
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000L
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 

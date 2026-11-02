@@ -15,11 +15,21 @@ Velvet is a local music player for Windows and Android, built around the files y
 | Platform | File | Requirements |
 | --- | --- | --- |
 | Windows 10 2004+ / 11 (x64) | [`Velvet.exe`](Velvet.exe) | None — self-contained, no .NET install |
-| Android 8.0+ | [`Velvet-1.9.apk`](Velvet-1.9.apk) | None |
+| Android 8.0+ | [`Velvet-1.10.apk`](Velvet-1.10.apk) | None |
 
 The Windows build is a single self-contained executable. It carries its own .NET runtime, WPF, and native libraries, so a fresh PC can double-click it and play. There is no separate dependency installer to run.
 
-## What's new in 1.9
+## What's new in 1.10
+
+- **Disco rebuilt around sound, not shapes** — the wedges, border lines, stroke rings and tip ovals are gone. Soft beams enter from real fixtures at the edges, theme-coloured liquid rolls with the low end, and fireworks detonate above the floor. Every run starts with a different palette, burst order and ship path; nothing is precomputed or stored.
+- **Fireworks that hit the kick** — bursts are now triggered by onsets measured against a slow bass baseline instead of frame-to-frame deltas, which almost never fired. Each burst throws a trailing shell, a white-hot core, falling embers and a flash, and the whole stage shoves on the hit.
+- **Instant response** — the extra attack smoothing between the FFT and the stage is gone. The liquid follows the raw low band every frame, with only the decay smoothed, so the wave lands with the kick instead of a beat later.
+- **Mobile holds 60 FPS** — spectrum updates no longer recompose the player screen. The disco stage, ring and strip animate in the draw phase with pooled particles, cached brushes and solid strokes, and the strip no longer builds forty gradients per frame. Lyrics advance on a frame clock rather than the half-second progress tick.
+- **Lyrics that stop getting stuck** — a track now loads its sidecar or cached lyrics instantly, then does one network pass with a hard 10-second budget: cloud copy first, then the synced catalogue. The pane reports back instead of hanging, offers **Search again**, and follows the current line smoothly, resyncing only after a real seek.
+- **A notification that belongs to the app** — framed, glowing artwork, a ticker with the artist, the queue position in the subtext, and no auto-dismiss while music is playing.
+- **Tray media follows the island** — Velvet now publishes an explicit AppUserModelID and re-publishes its SMTC status and timeline on every UI tick, including while paused, so tray mods read the same clock as the island. The session is shut down cleanly when Velvet exits.
+
+## What was new in 1.9
 
 - **Disco mode, rebuilt** — every light now has a source. Spotlights sweep in from the borders, corner washes stay local, theme-coloured liquid flows along the floor, sparks burst on kicks, shockwaves expand from the explosion, and a pirate ship occasionally sails through. Nothing is washed over the whole window.
 - **Lyrics that actually arrive** — Velvet looks for a sidecar first, then a cloud copy published beside the track, then a synced-lyrics catalogue. Tracks that only publish plain text are timed across the song, and the lyric stage animates each line in and out.

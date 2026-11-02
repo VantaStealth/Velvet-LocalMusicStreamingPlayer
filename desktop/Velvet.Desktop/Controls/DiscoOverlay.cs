@@ -4,9 +4,10 @@ using System.Windows.Media;
 namespace Velvet.Desktop.Controls;
 
 /// <summary>
-/// Beat-reactive disco stage: corner glow, sweeping spotlights, a flowing
-/// theme-coloured liquid floor, embers, shockwaves and the occasional pirate
-/// ship. Nothing is washed over the whole window; every light has a source.
+/// Beat-reactive stage. Every light has a source: soft beams enter from the
+/// edges, the theme-coloured liquid rolls with the low end, and fireworks
+/// detonate on the kick. Static brushes, pens and ship geometry are built once;
+/// the per-frame path only moves particles and rebuilds the liquid surface.
 /// </summary>
 public sealed class DiscoOverlay : FrameworkElement
 {
@@ -23,50 +24,74 @@ public sealed class DiscoOverlay : FrameworkElement
         Color.FromRgb(0xFF, 0x3B, 0x3B)
     };
 
-    private static readonly Brush ShipLightBrush = Radial(
-        Color.FromArgb(0xFF, 0xFF, 0xE3, 0xB0), Color.FromArgb(0x00, 0xFF, 0xC4, 0x4D));
+    private const int ParticleCap = 420;
+    private const int FlashCap = 12;
+    private const int TrailLevels = 6;
+    private const int DustLevels = 8;
+    private const double ShipIntervalMin = 21;
+    private const double ShipIntervalMax = 38;
+    private const double ShipSailSeconds = 10;
 
-    private const int ParticleCap = 150;
-    private const double ShipIntervalMin = 17;
-    private const double ShipIntervalMax = 33;
-    private const double ShipSailSeconds = 9;
-
-    private readonly RadialGradientBrush[] _corners = new RadialGradientBrush[Palette.Length];
-    private readonly LinearGradientBrush[] _spots = new LinearGradientBrush[Palette.Length];
-    private readonly RadialGradientBrush[] _pools = new RadialGradientBrush[Palette.Length];
+    private readonly RadialGradientBrush[] _corner = new RadialGradientBrush[Palette.Length];
+    private readonly RadialGradientBrush[] _beam = new RadialGradientBrush[Palette.Length];
+    private readonly RadialGradientBrush[] _bloom = new RadialGradientBrush[Palette.Length];
     private readonly LinearGradientBrush[] _liquid = new LinearGradientBrush[Palette.Length];
-    private readonly LinearGradientBrush[] _edgeHorizontal = new LinearGradientBrush[Palette.Length];
-    private readonly LinearGradientBrush[] _edgeVertical = new LinearGradientBrush[Palette.Length];
     private readonly SolidColorBrush[][] _dust = new SolidColorBrush[Palette.Length][];
-    private readonly Pen[] _rings = new Pen[Palette.Length];
+    private readonly Pen[][] _trails = new Pen[Palette.Length][];
+    private readonly Pen[] _whiteTrails = new Pen[TrailLevels];
     private readonly Pen[] _shipPens = new Pen[Palette.Length];
     private readonly LinearGradientBrush[] _shipHulls = new LinearGradientBrush[Palette.Length];
     private readonly LinearGradientBrush[] _shipSails = new LinearGradientBrush[Palette.Length];
     private readonly RadialGradientBrush[] _shipGlow = new RadialGradientBrush[Palette.Length];
 
-    private readonly List<Particle> _particles = new();
-    private readonly List<Shockwave> _waves = new();
-    private readonly Random _random = new(19);
+    private readonly Particle[] _particles = new Particle[ParticleCap];
+    private readonly Flash[] _flashes = new Flash[FlashCap];
+    private int _particleCount;
+    private int _flashCount;
+
+    private readonly Geometry _hull;
+    private readonly Geometry _deck;
+    private readonly Geometry _sailMain;
+    private readonly Geometry _sailFore;
+    private readonly Geometry _jib;
+    private readonly Geometry _flag;
+
+    private readonly Random _random = new(Random.Shared.Next());
+    private readonly int _colorOffset;
 
     private TimeSpan _lastFrame;
     private bool _hooked;
     private double _time;
     private double _bass;
-    private double _bassTarget;
+    private double _baseline;
+    private double _input;
     private double _lastPulse = -10;
-    private double _prevBass;
     private double _shake;
     private int _colorIndex;
     private double _colorClock;
     private double _lastBurst = -10;
-    private double _nextShip = 9;
+    private int _burstCount;
+    private double _nextShip = 8;
     private double _shipStart = -100;
     private double _shipDirection = 1;
+
+    private double _swellX;
+    private double _swellAmp;
+    private double _swellSpeed;
 
     public DiscoOverlay()
     {
         IsHitTestVisible = false;
+        ClipToBounds = true;
+        _colorOffset = _random.Next(Palette.Length);
+        _colorIndex = _colorOffset;
         BuildBrushes();
+        _hull = BuildHull();
+        _deck = BuildDeck();
+        _sailMain = BuildSailMain();
+        _sailFore = BuildSailFore();
+        _jib = BuildJib();
+        _flag = BuildFlag();
         Loaded += (_, _) => SyncLoop();
         Unloaded += (_, _) => SyncLoop();
         IsVisibleChanged += (_, _) => SyncLoop();
@@ -78,22 +103,54 @@ public sealed class DiscoOverlay : FrameworkElement
         set => SetValue(ActiveProperty, value);
     }
 
-    /// <summary>Fresh low-band energy for the current frame.</summary>
+    /// <summary>
+    /// Fresh low-band energy from the current frame. Attack is immediate so the
+    /// stage never trails the kick; only the decay is smoothed.
+    /// </summary>
     public void Pulse(float bass)
     {
-        _bassTarget = Math.Clamp(bass, 0f, 1f);
+        var value = Math.Clamp(bass, 0f, 1f);
+        _input = value;
         _lastPulse = _time;
+
+        if (value > _bass) _bass = value;
+
+        // Onsets are measured against a slow baseline: consecutive frames rarely
+        // jump far, so a frame-to-frame delta would almost never fire.
+        var onset = value - _baseline;
+        var strongRise = onset > 0.095 && value > 0.28;
+        var sustained = value > 0.82 && _time - _lastBurst > 0.9;
+        if ((strongRise || sustained) && _time - _lastBurst > 0.22)
+        {
+            _lastBurst = _time;
+            var strength = Math.Clamp(0.35 + onset * 2.4 + value * 0.55, 0.35, 1.0);
+            Explode(strength);
+            _shake = Math.Min(11, 3 + strength * 8);
+            _swellAmp = 10 + strength * 22;
+            _swellX = ActualWidth * (0.15 + _random.NextDouble() * 0.7);
+            _swellSpeed = (40 + strength * 260) * (_random.Next(2) == 0 ? 1 : -1);
+
+            _burstCount++;
+            if (_burstCount % 3 == 0)
+            {
+                _colorIndex = (_colorIndex + 1 + _random.Next(1, 3)) % Palette.Length;
+                _colorClock = _time;
+            }
+        }
+
     }
 
     public void Reset()
     {
-        _particles.Clear();
-        _waves.Clear();
+        _particleCount = 0;
+        _flashCount = 0;
         _bass = 0;
-        _bassTarget = 0;
+        _baseline = 0;
+        _input = 0;
         _shake = 0;
+        _swellAmp = 0;
         _shipStart = -100;
-        _nextShip = _time + 12;
+        _nextShip = _time + 6 + _random.NextDouble() * 12;
         InvalidateVisual();
     }
 
@@ -133,34 +190,26 @@ public sealed class DiscoOverlay : FrameworkElement
     private void Step(double dt)
     {
         _time += dt;
-        if (_time - _lastPulse > 0.2) _bassTarget = 0;
 
-        var attack = 1 - Math.Exp(-22 * dt);
-        var release = 1 - Math.Exp(-7 * dt);
-        _bass += (_bassTarget - _bass) * (_bassTarget > _bass ? attack : release);
+        // The input is refreshed every frame while music plays; if the pulses
+        // stop, let it fall away quickly instead of freezing on the last kick.
+        if (_time - _lastPulse > 0.14) _input *= Math.Exp(-24 * dt);
+        if (_input > _bass) _bass = _input;
+        else _bass += (_input - _bass) * (1 - Math.Exp(-9 * dt));
+        _baseline += (_bass - _baseline) * (1 - Math.Exp(-2.6 * dt));
 
-        var rising = _bass - _prevBass;
-        if (rising > 0.13 && _bass > 0.22 && _time - _lastBurst > 0.15)
-        {
-            _lastBurst = _time;
-            Burst(Math.Clamp(_bass, 0.3, 1.0));
-            if (_time - _colorClock > 1.1)
-            {
-                _colorIndex = (_colorIndex + 1) % Palette.Length;
-                _colorClock = _time;
-            }
-        }
-        _prevBass = _bass;
-
-        if (_time - _colorClock > 5.5)
+        if (_time - _colorClock > 6.5)
         {
             _colorIndex = (_colorIndex + 1) % Palette.Length;
             _colorClock = _time;
         }
 
-        _shake *= Math.Exp(-8 * dt);
+        _shake *= Math.Exp(-9 * dt);
+        _swellAmp *= Math.Exp(-2.4 * dt);
+        _swellX += _swellSpeed * dt;
+
         StepParticles(dt);
-        StepWaves(dt);
+        StepFlashes(dt);
 
         if (_time >= _nextShip)
         {
@@ -171,103 +220,182 @@ public sealed class DiscoOverlay : FrameworkElement
         }
     }
 
-    private void Burst(double strength)
-    {
-        _shake = Math.Min(13, 4 + strength * 9);
-        var color = _colorIndex;
-        var center = new Point(
-            ActualWidth * (0.2 + _random.NextDouble() * 0.6),
-            ActualHeight * (0.2 + _random.NextDouble() * 0.5));
-        _waves.Add(new Shockwave
-        {
-            X = center.X,
-            Y = center.Y,
-            Radius = 12,
-            Life = 0.9,
-            ColorIndex = color
-        });
-        _waves.Add(new Shockwave
-        {
-            X = center.X,
-            Y = center.Y,
-            Radius = 4,
-            Life = 0.5,
-            ColorIndex = (color + 2) % Palette.Length
-        });
+    // ---------------------------------------------------------------- bursts
 
-        var count = (int)(18 + strength * 34);
-        for (var i = 0; i < count && _particles.Count < ParticleCap; i++)
+    private void Explode(double strength)
+    {
+        var width = ActualWidth;
+        var height = ActualHeight;
+        if (width < 40 || height < 40) return;
+
+        var color = _colorIndex;
+        var x = width * (0.12 + _random.NextDouble() * 0.76);
+        var y = height * (0.13 + _random.NextDouble() * 0.38);
+        var pattern = _random.Next(4);
+        var speed = 130 + strength * 300;
+
+        var count = (int)(46 + strength * 66);
+        for (var i = 0; i < count && _particleCount < ParticleCap; i++)
         {
             var angle = _random.NextDouble() * Math.PI * 2;
-            var speed = 70 + _random.NextDouble() * 340;
-            _particles.Add(new Particle
+            var ring = pattern == 1 ? (i % 2 == 0 ? 1.0 : 0.58) : 1.0;
+            var velocity = speed * ring * (0.55 + _random.NextDouble() * 0.65);
+            var sparkColor = pattern == 3 && i % 5 == 0 ? -1 : color;
+
+            AddParticle(new Particle
             {
-                X = center.X,
-                Y = center.Y,
-                VX = Math.Cos(angle) * speed,
-                VY = Math.Sin(angle) * speed,
-                Size = 1 + _random.NextDouble() * 2.6,
-                Life = 0.55 + _random.NextDouble() * 0.9,
-                MaxLife = 1.45,
-                ColorIndex = color,
-                Ambient = false
+                X = x,
+                Y = y,
+                PX = x,
+                PY = y,
+                VX = Math.Cos(angle) * velocity,
+                VY = Math.Sin(angle) * velocity,
+                Size = 0.9 + _random.NextDouble() * 1.3,
+                Life = 0.65 + _random.NextDouble() * (pattern == 2 ? 1.35 : 0.85),
+                MaxLife = pattern == 2 ? 2.0 : 1.5,
+                Gravity = pattern == 2 ? 34 : 96,
+                Drag = pattern == 2 ? 0.6 : 1.5,
+                Color = sparkColor,
+                Kind = 0
+            });
+        }
+
+        // White-hot cores that outrun the coloured shell.
+        for (var i = 0; i < 10 && _particleCount < ParticleCap; i++)
+        {
+            var angle = _random.NextDouble() * Math.PI * 2;
+            var velocity = speed * (0.9 + _random.NextDouble() * 0.5);
+            AddParticle(new Particle
+            {
+                X = x,
+                Y = y,
+                PX = x,
+                PY = y,
+                VX = Math.Cos(angle) * velocity,
+                VY = Math.Sin(angle) * velocity,
+                Size = 1.5,
+                Life = 0.32 + _random.NextDouble() * 0.22,
+                MaxLife = 0.55,
+                Gravity = 60,
+                Drag = 2.4,
+                Color = -1,
+                Kind = 0
+            });
+        }
+
+        AddFlash(new Flash
+        {
+            X = x,
+            Y = y,
+            Age = 0,
+            Duration = 0.42,
+            Size = 150 + strength * 190,
+            Color = color
+        });
+
+        // A handful of embers fall out of the burst and drift down.
+        for (var i = 0; i < 6 && _particleCount < ParticleCap; i++)
+        {
+            AddParticle(new Particle
+            {
+                X = x + (_random.NextDouble() - 0.5) * 40,
+                Y = y,
+                PX = x,
+                PY = y,
+                VX = (_random.NextDouble() - 0.5) * 46,
+                VY = 20 + _random.NextDouble() * 60,
+                Size = 0.8 + _random.NextDouble() * 1.2,
+                Life = 1.2 + _random.NextDouble() * 1.4,
+                MaxLife = 2.6,
+                Gravity = 26,
+                Drag = 0.7,
+                Color = color,
+                Kind = 1
             });
         }
     }
 
+    private void AddParticle(Particle particle)
+    {
+        if (_particleCount >= ParticleCap) return;
+        _particles[_particleCount++] = particle;
+    }
+
+    private void AddFlash(Flash flash)
+    {
+        if (_flashCount >= FlashCap) return;
+        _flashes[_flashCount++] = flash;
+    }
+
     private void StepParticles(double dt)
     {
-        var ambientRate = 26 + _bass * 60;
-        if (_random.NextDouble() < ambientRate * dt && _particles.Count < ParticleCap)
+        // Ambient embers rise from the liquid; their rate follows the low end.
+        var ambientRate = 10 + _bass * 34;
+        if (_random.NextDouble() < ambientRate * dt && _particleCount < ParticleCap)
         {
-            _particles.Add(new Particle
+            var width = Math.Max(1, ActualWidth);
+            var height = Math.Max(1, ActualHeight);
+            AddParticle(new Particle
             {
-                X = _random.NextDouble() * Math.Max(1, ActualWidth),
-                Y = ActualHeight * (0.82 + _random.NextDouble() * 0.2),
-                VX = (_random.NextDouble() - 0.5) * 26,
-                VY = -18 - _random.NextDouble() * 42,
-                Size = 0.7 + _random.NextDouble() * 1.7,
-                Life = 2.4 + _random.NextDouble() * 2.2,
-                MaxLife = 4.6,
-                ColorIndex = _colorIndex,
-                Ambient = true
+                X = _random.NextDouble() * width,
+                Y = height * (0.84 + _random.NextDouble() * 0.16),
+                PX = 0,
+                PY = 0,
+                VX = (_random.NextDouble() - 0.5) * 24,
+                VY = -14 - _random.NextDouble() * 44,
+                Size = 0.7 + _random.NextDouble() * 1.5,
+                Life = 2.2 + _random.NextDouble() * 2.2,
+                MaxLife = 4.4,
+                Gravity = -1.5,
+                Drag = 0.35,
+                Color = (_colorIndex + _random.Next(3)) % Palette.Length,
+                Kind = 2
             });
         }
 
-        for (var i = _particles.Count - 1; i >= 0; i--)
+        for (var i = _particleCount - 1; i >= 0; i--)
         {
             var particle = _particles[i];
             particle.Life -= dt;
             if (particle.Life <= 0)
             {
-                _particles.RemoveAt(i);
+                _particles[i] = _particles[--_particleCount];
                 continue;
             }
+
+            particle.PX = particle.X;
+            particle.PY = particle.Y;
+            var drag = Math.Exp(-particle.Drag * dt);
+            particle.VX *= drag;
+            particle.VY = particle.VY * drag + particle.Gravity * dt;
+
+            if (particle.Kind == 2)
+            {
+                particle.VX += Math.Sin(_time * 1.9 + particle.Y * 0.012) * 10 * dt;
+            }
+
             particle.X += particle.VX * dt;
             particle.Y += particle.VY * dt;
-            if (particle.Ambient)
-            {
-                particle.VX += Math.Sin(_time * 1.7 + particle.Y * 0.01) * 8 * dt;
-                particle.VY -= 5 * dt;
-            }
-            else
-            {
-                particle.VX *= Math.Exp(-1.6 * dt);
-                particle.VY = particle.VY * Math.Exp(-1.6 * dt) + 140 * dt;
-            }
+            _particles[i] = particle;
         }
     }
 
-    private void StepWaves(double dt)
+    private void StepFlashes(double dt)
     {
-        for (var i = _waves.Count - 1; i >= 0; i--)
+        for (var i = _flashCount - 1; i >= 0; i--)
         {
-            var wave = _waves[i];
-            wave.Life -= dt;
-            wave.Radius += (260 + _bass * 180) * dt;
-            if (wave.Life <= 0) _waves.RemoveAt(i);
+            var flash = _flashes[i];
+            flash.Age += dt;
+            if (flash.Age >= flash.Duration)
+            {
+                _flashes[i] = _flashes[--_flashCount];
+                continue;
+            }
+            _flashes[i] = flash;
         }
     }
+
+    // ---------------------------------------------------------------- render
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -281,125 +409,110 @@ public sealed class DiscoOverlay : FrameworkElement
         var energy = 0.55 + _bass * 0.45;
         var wobble = _shake;
 
-        // A whole-stage shove on hard hits. The UI content sits above this layer,
-        // so the room shakes without ever making the interface unreadable.
+        // A whole-stage shove on hard hits. The interface sits above this layer.
         if (wobble > 0.35)
             dc.PushTransform(new TranslateTransform(
-                Math.Sin(_time * 57) * wobble * 0.34,
-                Math.Cos(_time * 71) * wobble * 0.34));
+                Math.Sin(_time * 57) * wobble * 0.3,
+                Math.Cos(_time * 71) * wobble * 0.3));
 
-        DrawCorners(dc, width, height, minSide, color, energy, wobble);
-        DrawEdges(dc, width, height, color, energy);
-        DrawSpotlights(dc, width, height, color, energy, wobble);
+        DrawCornerHaze(dc, width, height, minSide, color, energy);
+        DrawBeams(dc, width, height, color, energy, wobble);
         DrawLiquid(dc, width, height, color);
         DrawShip(dc, width, height, color);
-        DrawWaves(dc);
+        DrawFlashes(dc, width, height);
         DrawParticles(dc);
 
         if (wobble > 0.35) dc.Pop();
     }
 
-    private void DrawCorners(
+    private void DrawCornerHaze(
         DrawingContext dc, double width, double height, double minSide,
-        int color, double energy, double wobble)
+        int color, double energy)
     {
-        var radius = minSide * (0.18 + _bass * 0.05);
-        var points = new[]
+        var radius = minSide * (0.20 + _bass * 0.055);
+        dc.PushOpacity(energy * 0.5);
+        for (var index = 0; index < 4; index++)
         {
-            new Point(-wobble * 0.6, -wobble * 0.4),
-            new Point(width + wobble * 0.6, -wobble * 0.5),
-            new Point(width + wobble * 0.4, height + wobble * 0.6),
-            new Point(-wobble * 0.5, height + wobble * 0.5)
-        };
-
-        for (var index = 0; index < points.Length; index++)
-        {
-            var brush = _corners[(color + index) % Palette.Length];
-            dc.PushOpacity(energy * 0.58);
-            dc.DrawEllipse(brush, null, points[index], radius, radius);
-            dc.Pop();
+            var brush = _corner[(color + _colorOffset + index) % Palette.Length];
+            var x = (index & 1) == 0 ? 0.0 : width;
+            var y = index < 2 ? 0.0 : height;
+            var driftX = Math.Sin(_time * 0.21 + index * 1.7) * minSide * 0.018;
+            var driftY = Math.Cos(_time * 0.17 + index * 2.3) * minSide * 0.014;
+            dc.DrawEllipse(brush, null, new Point(x + driftX, y + driftY), radius, radius);
         }
-    }
-
-    private void DrawEdges(DrawingContext dc, double width, double height, int color, double energy)
-    {
-        dc.PushOpacity(0.35 + _bass * 0.55);
-        var horizontal = _edgeHorizontal[color];
-        var vertical = _edgeVertical[(color + 2) % Palette.Length];
-        dc.DrawRectangle(horizontal, null, new Rect(0, 0, width, 2.4));
-        dc.DrawRectangle(horizontal, null, new Rect(0, height - 2.4, width, 2.4));
-        dc.DrawRectangle(vertical, null, new Rect(0, 0, 2.2, height));
-        dc.DrawRectangle(vertical, null, new Rect(width - 2.2, 0, 2.2, height));
         dc.Pop();
     }
 
-    private void DrawSpotlights(
+    private void DrawBeams(
         DrawingContext dc, double width, double height, int color,
         double energy, double wobble)
     {
-        var sweep = Math.Sin(_time * 0.42) * 0.26;
-        DrawSpotlight(dc, width, height, color, energy, wobble,
-            new Point(width * 0.04 + wobble, -height * 0.10), 0.50 + sweep, 0.055);
-        DrawSpotlight(dc, width, height, (color + 2) % Palette.Length, energy, wobble,
-            new Point(width * 0.96 - wobble, -height * 0.10), -0.50 + sweep * 0.8, 0.045);
+        var sweep = Math.Sin(_time * 0.34) * 0.22;
+        DrawBeam(dc, width, height, color, energy, wobble,
+            new Point(-width * 0.02, -height * 0.06), 0.46 + sweep, 0.085);
+        DrawBeam(dc, width, height, (color + 2) % Palette.Length, energy, wobble,
+            new Point(width * 1.02, -height * 0.06), -0.46 + sweep * 0.8, 0.072);
+        DrawBeam(dc, width, height, (color + 1) % Palette.Length, energy * 0.8, wobble,
+            new Point(-width * 0.03, height * 1.04), -0.62 + sweep * 0.55, 0.058);
     }
 
-    private void DrawSpotlight(
+    private void DrawBeam(
         DrawingContext dc, double width, double height, int color,
         double energy, double wobble, Point origin, double angle, double spread)
     {
-        var length = height * (0.92 + _bass * 0.12);
-        var end = new Point(
-            origin.X + Math.Sin(angle) * length,
-            origin.Y + Math.Cos(angle) * length);
-        var half = height * (spread + _bass * 0.03);
-        var wedge = Wedge(origin, end, half);
+        var length = height * (1.02 + _bass * 0.1);
+        var halfWidth = height * (spread + _bass * 0.022);
+        var center = new Point(
+            origin.X + Math.Sin(angle) * length * 0.5,
+            origin.Y + Math.Cos(angle) * length * 0.5);
+        var theta = Math.Atan2(Math.Cos(angle), Math.Sin(angle)) * 180 / Math.PI;
 
-        dc.PushOpacity(energy * 0.72);
-        dc.DrawGeometry(_spots[color], null, wedge);
+        dc.PushOpacity(energy * (0.55 + _bass * 0.35));
+        dc.PushTransform(new RotateTransform(theta, center.X, center.Y));
+        dc.DrawEllipse(_beam[color], null, center, length * 0.5, halfWidth);
+        dc.Pop();
         dc.Pop();
 
-        var poolRadius = height * (0.12 + _bass * 0.05);
-        dc.PushOpacity(energy * 0.72);
-        dc.DrawEllipse(_pools[color], null, end, poolRadius, poolRadius * 0.5);
-        dc.Pop();
-
-        // A visible lamp fixture on the border, so every beam has a source.
-        var sourceRadius = 6 + _bass * 6;
-        dc.PushOpacity(0.9);
-        dc.DrawEllipse(_pools[color], null, origin, sourceRadius * 2.6, sourceRadius * 2.6);
-        dc.DrawEllipse(Brushes.White, null, origin, sourceRadius * 0.34, sourceRadius * 0.34);
-        dc.Pop();
-
-        var core = new Pen(_dust[color][5], 1.2);
-        dc.PushOpacity(0.45 + _bass * 0.4);
-        dc.DrawLine(core, origin, end);
+        // The fixture itself, so the haze always reads as light from a source.
+        var lamp = new Point(origin.X + wobble * 0.4, origin.Y + wobble * 0.3);
+        var glow = 12 + _bass * 18;
+        dc.PushOpacity(0.55 + _bass * 0.35);
+        dc.DrawEllipse(_bloom[color], null, lamp, glow, glow);
+        dc.DrawEllipse(Brushes.White, null, lamp, 2.2 + _bass * 1.4, 2.2 + _bass * 1.4);
         dc.Pop();
     }
 
     private void DrawLiquid(DrawingContext dc, double width, double height, int color)
     {
-        var baseY = height * 0.87;
+        var baseY = height * 0.875;
+        var points = 44;
+        var stepX = width / (points - 1);
+        var swellSpread = Math.Max(90, width * 0.17);
+
         for (var layer = 2; layer >= 0; layer--)
         {
-            var path = new StreamGeometry();
-            var amplitude = 10 + _bass * 14 + layer * 4;
-            using (var ctx = path.Open())
+            var amplitude = 7 + _bass * 26 + layer * 4;
+            var drift = _time * (0.95 + layer * 0.34 + _bass * 0.7) + layer * 1.9;
+            var geometry = new StreamGeometry();
+            using (var ctx = geometry.Open())
             {
-                ctx.BeginFigure(new Point(0, height + 4), true, true);
-                for (var x = 0.0; x <= width + 12; x += 12)
+                ctx.BeginFigure(new Point(-2, height + 2), true, true);
+                for (var index = 0; index < points; index++)
                 {
-                    var y = baseY + layer * 11 +
-                        Math.Sin(x * 0.0075 + _time * (1.1 + layer * 0.32) + layer * 1.7) * amplitude +
-                        Math.Sin(x * 0.021 - _time * 0.8) * 4;
+                    var x = index * stepX;
+                    var swell = Math.Exp(-Math.Pow((x - _swellX) / swellSpread, 2)) * _swellAmp;
+                    var y = baseY + layer * 10
+                        + Math.Sin(x * 0.0068 + drift) * amplitude
+                        + Math.Sin(x * 0.0195 - _time * 1.35) * (3 + _bass * 6)
+                        + swell;
                     ctx.LineTo(new Point(x, y), true, false);
                 }
-                ctx.LineTo(new Point(width + 4, height + 4), true, false);
+                ctx.LineTo(new Point(width + 2, height + 2), true, false);
             }
-            path.Freeze();
+            geometry.Freeze();
 
-            dc.PushOpacity(0.42 + _bass * 0.25 - layer * 0.07);
-            dc.DrawGeometry(_liquid[(color + layer) % Palette.Length], null, path);
+            dc.PushOpacity(0.48 + _bass * 0.24 - layer * 0.09);
+            dc.DrawGeometry(_liquid[(color + layer) % Palette.Length], null, geometry);
             dc.Pop();
         }
     }
@@ -411,126 +524,85 @@ public sealed class DiscoOverlay : FrameworkElement
 
         var progress = age / ShipSailSeconds;
         var x = _shipDirection > 0
-            ? -width * 0.14 + progress * width * 1.28
-            : width * 1.14 - progress * width * 1.28;
-        var y = height * 0.845 + Math.Sin(_time * 1.6) * 4;
-        var scale = Math.Clamp(height / 1150, 0.52, 0.78);
-        var tilt = Math.Sin(_time * 1.3) * 2.2 * _shipDirection;
+            ? -width * 0.12 + progress * width * 1.24
+            : width * 1.12 - progress * width * 1.24;
+        var y = height * 0.872 + Math.Sin(_time * 1.5) * 3;
+        var scale = Math.Clamp(height / 1450, 0.40, 0.62);
+        var tilt = Math.Sin(_time * 1.25) * 2.0 * _shipDirection;
 
         dc.PushTransform(new TranslateTransform(x, y));
         dc.PushTransform(new RotateTransform(tilt));
         dc.PushTransform(new ScaleTransform(scale * _shipDirection, scale));
 
-        dc.PushOpacity(0.8);
-        dc.DrawEllipse(_shipGlow[color], null, new Point(0, 14), 120, 46);
+        dc.PushOpacity(0.7);
+        dc.DrawEllipse(_shipGlow[color], null, new Point(0, 16), 110, 40);
         dc.Pop();
-        dc.DrawEllipse(null, _shipPens[color], new Point(0, 30), 96, 6);
+        dc.DrawEllipse(null, _shipPens[color], new Point(0, 30), 90, 5.5);
 
-        var hull = new StreamGeometry();
-        using (var ctx = hull.Open())
-        {
-            ctx.BeginFigure(new Point(-94, -6), true, true);
-            ctx.LineTo(new Point(-66, 24), true, false);
-            ctx.LineTo(new Point(58, 24), true, false);
-            ctx.LineTo(new Point(98, -6), true, false);
-            ctx.LineTo(new Point(70, -12), true, false);
-            ctx.LineTo(new Point(-72, -12), true, false);
-        }
-        hull.Freeze();
-        dc.DrawGeometry(_shipHulls[color], _shipPens[color], hull);
+        dc.DrawGeometry(_shipHulls[color], _shipPens[color], _hull);
+        dc.DrawGeometry(null, _shipPens[color], _deck);
+        dc.DrawLine(_shipPens[color], new Point(-36, -12), new Point(-36, -88));
+        dc.DrawLine(_shipPens[color], new Point(6, -12), new Point(6, -98));
+        dc.DrawLine(_shipPens[color], new Point(44, -12), new Point(44, -74));
+        dc.DrawGeometry(_shipSails[color], _shipPens[color], _sailMain);
+        dc.DrawGeometry(_shipSails[color], _shipPens[color], _sailFore);
+        dc.DrawGeometry(_shipSails[color], _shipPens[color], _jib);
+        dc.DrawGeometry(_dust[color][5], null, _flag);
 
-        var deck = new StreamGeometry();
-        using (var ctx = deck.Open())
-        {
-            ctx.BeginFigure(new Point(-78, -12), false, false);
-            ctx.LineTo(new Point(76, -12), true, false);
-            ctx.LineTo(new Point(88, -2), true, false);
-        }
-        deck.Freeze();
-        dc.DrawGeometry(null, _shipPens[color], deck);
-
-        var mastPen = _shipPens[color];
-        dc.DrawLine(mastPen, new Point(-36, -12), new Point(-36, -88));
-        dc.DrawLine(mastPen, new Point(6, -12), new Point(6, -98));
-        dc.DrawLine(mastPen, new Point(44, -12), new Point(44, -74));
-
-        var main = new StreamGeometry();
-        using (var ctx = main.Open())
-        {
-            ctx.BeginFigure(new Point(-32, -84), true, true);
-            ctx.LineTo(new Point(-32, -26), true, false);
-            ctx.QuadraticBezierTo(new Point(-70, -40), new Point(-64, -66), true, false);
-        }
-        main.Freeze();
-        dc.DrawGeometry(_shipSails[color], mastPen, main);
-
-        var fore = new StreamGeometry();
-        using (var ctx = fore.Open())
-        {
-            ctx.BeginFigure(new Point(10, -94), true, true);
-            ctx.LineTo(new Point(10, -24), true, false);
-            ctx.QuadraticBezierTo(new Point(48, -36), new Point(42, -74), true, false);
-        }
-        fore.Freeze();
-        dc.DrawGeometry(_shipSails[color], mastPen, fore);
-
-        var jib = new StreamGeometry();
-        using (var ctx = jib.Open())
-        {
-            ctx.BeginFigure(new Point(48, -70), true, true);
-            ctx.LineTo(new Point(48, -22), true, false);
-            ctx.QuadraticBezierTo(new Point(76, -32), new Point(66, -56), true, false);
-        }
-        jib.Freeze();
-        dc.DrawGeometry(_shipSails[color], mastPen, jib);
-
-        var flag = new StreamGeometry();
-        using (var ctx = flag.Open())
-        {
-            ctx.BeginFigure(new Point(6, -98), true, true);
-            ctx.LineTo(new Point(6, -112), true, false);
-            ctx.LineTo(new Point(26, -105), true, false);
-        }
-        flag.Freeze();
-        dc.DrawGeometry(_dust[color][6], null, flag);
-
-        var lantern = new Point(70, -8);
-        dc.DrawEllipse(ShipLightBrush, null, lantern, 11, 11);
-        dc.DrawEllipse(Brushes.White, null, lantern, 2.2, 2.2);
+        var lamp = new Point(70, -8);
+        dc.DrawEllipse(_bloom[(color + 3) % Palette.Length], null, lamp, 14, 14);
+        dc.DrawEllipse(Brushes.White, null, lamp, 2, 2);
 
         dc.Pop();
         dc.Pop();
         dc.Pop();
     }
 
-    private void DrawWaves(DrawingContext dc)
+    private void DrawFlashes(DrawingContext dc, double width, double height)
     {
-        foreach (var wave in _waves)
+        for (var i = 0; i < _flashCount; i++)
         {
-            var center = new Point(wave.X, wave.Y);
-            var fade = Math.Clamp(wave.Life, 0, 1);
-            dc.PushOpacity(fade * 0.5);
-            dc.DrawEllipse(_liquid[wave.ColorIndex], null, center, wave.Radius, wave.Radius * 0.62);
+            var flash = _flashes[i];
+            var progress = flash.Age / flash.Duration;
+            var fade = (1 - progress) * (1 - progress);
+            var radius = flash.Size * (0.28 + progress * 0.72);
+
+            dc.PushOpacity(fade * 0.7);
+            dc.DrawEllipse(_bloom[flash.Color], null, new Point(flash.X, flash.Y), radius, radius);
             dc.Pop();
-            dc.PushOpacity(fade * 0.8);
-            dc.DrawEllipse(null, _rings[wave.ColorIndex], center, wave.Radius, wave.Radius * 0.62);
-            dc.DrawEllipse(_dust[wave.ColorIndex][7], null, center, 3 + fade * 4, 3 + fade * 4);
+
+            // A soft reflected bloom on the liquid keeps the burst grounded.
+            var reflection = radius * 1.4;
+            dc.PushOpacity(fade * 0.22);
+            dc.DrawEllipse(_bloom[flash.Color], null,
+                new Point(flash.X, height * 0.885), reflection, reflection * 0.22);
             dc.Pop();
         }
     }
 
     private void DrawParticles(DrawingContext dc)
     {
-        foreach (var particle in _particles)
+        for (var i = 0; i < _particleCount; i++)
         {
+            var particle = _particles[i];
             var ratio = Math.Clamp(particle.Life / particle.MaxLife, 0, 1);
-            var bucket = Math.Clamp((int)(ratio * 7), 0, 7);
-            var brush = _dust[particle.ColorIndex][bucket];
-            dc.PushOpacity(particle.Ambient ? 0.85 : 1.0);
-            dc.DrawEllipse(brush, null, new Point(particle.X, particle.Y), particle.Size, particle.Size);
-            dc.Pop();
+            var level = Math.Clamp((int)(ratio * (TrailLevels - 1) + 0.5), 0, TrailLevels - 1);
+
+            if (particle.Kind == 2)
+            {
+                var bucket = Math.Clamp((int)(ratio * (DustLevels - 1)), 0, DustLevels - 1);
+                dc.DrawEllipse(_dust[particle.Color][bucket], null,
+                    new Point(particle.X, particle.Y), particle.Size, particle.Size);
+                continue;
+            }
+
+            var pen = particle.Color < 0 ? _whiteTrails[level] : _trails[particle.Color][level];
+            dc.DrawLine(pen, new Point(particle.PX, particle.PY),
+                new Point(particle.X, particle.Y));
         }
     }
+
+    // ---------------------------------------------------------------- assets
 
     private void BuildBrushes()
     {
@@ -538,66 +610,52 @@ public sealed class DiscoOverlay : FrameworkElement
         {
             var c = Palette[index];
 
-            _corners[index] = Frozen(Radial(
-                Color.FromArgb(0x9C, c.R, c.G, c.B),
-                Color.FromArgb(0x28, c.R, c.G, c.B),
+            _corner[index] = Frozen(Radial(
+                Color.FromArgb(0x70, c.R, c.G, c.B),
+                Color.FromArgb(0x1E, c.R, c.G, c.B),
                 Color.FromArgb(0x00, c.R, c.G, c.B)));
 
-            _pools[index] = Frozen(Radial(
-                Color.FromArgb(0xB4, c.R, c.G, c.B),
-                Color.FromArgb(0x2E, c.R, c.G, c.B),
-                Color.FromArgb(0x00, c.R, c.G, c.B)));
-
-            var spot = new LinearGradientBrush
+            var beam = new RadialGradientBrush
             {
-                StartPoint = new Point(0, 0),
-                EndPoint = new Point(0, 1)
+                Center = new Point(0.5, 0.5),
+                GradientOrigin = new Point(0, 0.5),
+                RadiusX = 0.5,
+                RadiusY = 0.5
             };
-            spot.GradientStops.Add(new GradientStop(Color.FromArgb(0x7A, c.R, c.G, c.B), 0));
-            spot.GradientStops.Add(new GradientStop(Color.FromArgb(0x20, c.R, c.G, c.B), 0.6));
-            spot.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, c.R, c.G, c.B), 1));
-            _spots[index] = Frozen(spot);
+            beam.GradientStops.Add(new GradientStop(Color.FromArgb(0x8C, c.R, c.G, c.B), 0));
+            beam.GradientStops.Add(new GradientStop(Color.FromArgb(0x2A, c.R, c.G, c.B), 0.42));
+            beam.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, c.R, c.G, c.B), 1));
+            _beam[index] = Frozen(beam);
+
+            _bloom[index] = Frozen(Radial(
+                Color.FromArgb(0xB8, c.R, c.G, c.B),
+                Color.FromArgb(0x2A, c.R, c.G, c.B),
+                Color.FromArgb(0x00, c.R, c.G, c.B)));
 
             var liquid = new LinearGradientBrush
             {
                 StartPoint = new Point(0, 0),
                 EndPoint = new Point(0, 1)
             };
-            liquid.GradientStops.Add(new GradientStop(Color.FromArgb(0x58, c.R, c.G, c.B), 0));
-            liquid.GradientStops.Add(new GradientStop(Color.FromArgb(0x16, c.R, c.G, c.B), 1));
+            liquid.GradientStops.Add(new GradientStop(Color.FromArgb(0x56, c.R, c.G, c.B), 0));
+            liquid.GradientStops.Add(new GradientStop(Color.FromArgb(0x14, c.R, c.G, c.B), 1));
             _liquid[index] = Frozen(liquid);
 
-            var horizontal = new LinearGradientBrush
+            _dust[index] = new SolidColorBrush[DustLevels];
+            for (var bucket = 0; bucket < DustLevels; bucket++)
             {
-                StartPoint = new Point(0, 0),
-                EndPoint = new Point(1, 0)
-            };
-            horizontal.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, c.R, c.G, c.B), 0));
-            horizontal.GradientStops.Add(new GradientStop(Color.FromArgb(0x8C, c.R, c.G, c.B), 0.5));
-            horizontal.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, c.R, c.G, c.B), 1));
-            _edgeHorizontal[index] = Frozen(horizontal);
-
-            var vertical = new LinearGradientBrush
-            {
-                StartPoint = new Point(0, 0),
-                EndPoint = new Point(0, 1)
-            };
-            vertical.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, c.R, c.G, c.B), 0));
-            vertical.GradientStops.Add(new GradientStop(Color.FromArgb(0x8C, c.R, c.G, c.B), 0.5));
-            vertical.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, c.R, c.G, c.B), 1));
-            _edgeVertical[index] = Frozen(vertical);
-
-            _dust[index] = new SolidColorBrush[8];
-            for (var bucket = 0; bucket < _dust[index].Length; bucket++)
-            {
-                var alpha = (byte)(48 + bucket * 27);
+                var alpha = (byte)(40 + bucket * 27);
                 _dust[index][bucket] = Frozen(new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B)));
             }
 
-            _rings[index] = new Pen(new SolidColorBrush(Color.FromArgb(0xE0, c.R, c.G, c.B)), 1.8);
-            _rings[index].Freeze();
-            _shipPens[index] = new Pen(new SolidColorBrush(Color.FromArgb(0xE6, c.R, c.G, c.B)), 1.3);
-            _shipPens[index].Freeze();
+            _trails[index] = new Pen[TrailLevels];
+            for (var level = 0; level < TrailLevels; level++)
+            {
+                var alpha = (byte)(34 + level * 40);
+                _trails[index][level] = TrailPen(Color.FromArgb(alpha, c.R, c.G, c.B), 0.9 + level * 0.28);
+            }
+
+            _shipPens[index] = Pen(Color.FromArgb(0xE6, c.R, c.G, c.B), 1.2);
 
             var hullFill = new LinearGradientBrush
             {
@@ -624,6 +682,12 @@ public sealed class DiscoOverlay : FrameworkElement
                 Color.FromArgb(0x1E, c.R, c.G, c.B),
                 Color.FromArgb(0x00, c.R, c.G, c.B)));
         }
+
+        for (var level = 0; level < TrailLevels; level++)
+        {
+            var alpha = (byte)(40 + level * 42);
+            _whiteTrails[level] = TrailPen(Color.FromArgb(alpha, 255, 250, 255), 0.8 + level * 0.26);
+        }
     }
 
     private static RadialGradientBrush Radial(Color inner, Color mid, Color outer)
@@ -641,65 +705,130 @@ public sealed class DiscoOverlay : FrameworkElement
         return brush;
     }
 
-    private static RadialGradientBrush Radial(Color inner, Color outer)
+    private static T Frozen<T>(T value) where T : Freezable
     {
-        var brush = new RadialGradientBrush
+        value.Freeze();
+        return value;
+    }
+
+    private static Pen Pen(Color color, double thickness)
+    {
+        var pen = new Pen(Frozen(new SolidColorBrush(color)), thickness)
         {
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
+            StartLineCap = PenLineCap.Round,
+            EndLineCap = PenLineCap.Round
         };
-        brush.GradientStops.Add(new GradientStop(inner, 0));
-        brush.GradientStops.Add(new GradientStop(outer, 1));
-        return brush;
+        pen.Freeze();
+        return pen;
     }
 
-    private static T Frozen<T>(T brush) where T : Freezable
-    {
-        brush.Freeze();
-        return brush;
-    }
+    private static Pen TrailPen(Color color, double thickness) => Pen(color, thickness);
 
-    private static Geometry Wedge(Point origin, Point end, double halfWidth)
+    private static Geometry BuildHull()
     {
-        var dx = end.X - origin.X;
-        var dy = end.Y - origin.Y;
-        var length = Math.Sqrt(dx * dx + dy * dy);
-        if (length < 1) return Geometry.Empty;
-        var px = -dy / length * halfWidth;
-        var py = dx / length * halfWidth;
-
         var geometry = new StreamGeometry();
         using (var ctx = geometry.Open())
         {
-            ctx.BeginFigure(origin, true, true);
-            ctx.LineTo(new Point(end.X + px, end.Y + py), true, false);
-            ctx.LineTo(new Point(end.X - px, end.Y - py), true, false);
+            ctx.BeginFigure(new Point(-94, -6), true, true);
+            ctx.LineTo(new Point(-66, 24), true, false);
+            ctx.LineTo(new Point(58, 24), true, false);
+            ctx.LineTo(new Point(98, -6), true, false);
+            ctx.LineTo(new Point(70, -12), true, false);
+            ctx.LineTo(new Point(-72, -12), true, false);
         }
         geometry.Freeze();
         return geometry;
     }
 
-    private sealed class Particle
+    private static Geometry BuildDeck()
+    {
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(new Point(-78, -12), false, false);
+            ctx.LineTo(new Point(76, -12), true, false);
+            ctx.LineTo(new Point(88, -2), true, false);
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static Geometry BuildSailMain()
+    {
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(new Point(-32, -84), true, true);
+            ctx.LineTo(new Point(-32, -26), true, false);
+            ctx.QuadraticBezierTo(new Point(-70, -40), new Point(-64, -66), true, false);
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static Geometry BuildSailFore()
+    {
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(new Point(10, -94), true, true);
+            ctx.LineTo(new Point(10, -24), true, false);
+            ctx.QuadraticBezierTo(new Point(48, -36), new Point(42, -74), true, false);
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static Geometry BuildJib()
+    {
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(new Point(48, -70), true, true);
+            ctx.LineTo(new Point(48, -22), true, false);
+            ctx.QuadraticBezierTo(new Point(76, -32), new Point(66, -56), true, false);
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static Geometry BuildFlag()
+    {
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(new Point(6, -98), true, true);
+            ctx.LineTo(new Point(6, -112), true, false);
+            ctx.LineTo(new Point(26, -105), true, false);
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private struct Particle
     {
         public double X;
         public double Y;
+        public double PX;
+        public double PY;
         public double VX;
         public double VY;
         public double Size;
         public double Life;
         public double MaxLife;
-        public int ColorIndex;
-        public bool Ambient;
+        public double Gravity;
+        public double Drag;
+        public int Color;
+        public int Kind;
     }
 
-    private sealed class Shockwave
+    private struct Flash
     {
         public double X;
         public double Y;
-        public double Radius;
-        public double Life;
-        public int ColorIndex;
+        public double Age;
+        public double Duration;
+        public double Size;
+        public int Color;
     }
 }

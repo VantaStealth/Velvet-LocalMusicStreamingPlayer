@@ -133,7 +133,7 @@ private fun VelvetApp(
         val library by viewModel.library.collectAsStateWithLifecycle()
         val player by viewModel.playerState.collectAsStateWithLifecycle()
         val favorites by viewModel.favorites.collectAsStateWithLifecycle()
-        val bands by viewModel.spectrum.collectAsStateWithLifecycle()
+        val spectrum = viewModel.spectrum.collectAsStateWithLifecycle()
         val spectrumLive by viewModel.spectrumLive.collectAsStateWithLifecycle()
         val spectrumGain by viewModel.spectrumGain.collectAsStateWithLifecycle()
         val appVolume by viewModel.appVolume.collectAsStateWithLifecycle()
@@ -248,7 +248,7 @@ private fun VelvetApp(
                 PlayerScreen(
                     player = player,
                     isFavorite = player.mediaId in favorites,
-                    bands = bands,
+                    spectrum = spectrum,
                     spectrumLive = spectrumLive,
                     spectrumGain = spectrumGain,
                     onSpectrumGain = viewModel::setSpectrumGain,

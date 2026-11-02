@@ -57,7 +57,7 @@ public sealed class PlaybackEngine : IDisposable
         });
         _player.PlaybackSession.PlaybackStateChanged += (_, _) => Dispatch(() =>
         {
-            PublishStatus();
+            UpdateTimeline();
             StateChanged?.Invoke();
         });
     }
@@ -317,9 +317,15 @@ public sealed class PlaybackEngine : IDisposable
         return upcoming;
     }
 
+    /// <summary>
+    /// Re-publishes the playback clock and status. Called on every UI tick so
+    /// shell integrations that read SMTC (media flyout, tray mods) advance with
+    /// the island instead of freezing on the position at track open.
+    /// </summary>
     public void UpdateTimeline()
     {
         if (_smtc is null || _disposed || Current is null) return;
+        PublishStatus();
         var duration = Duration;
         if (duration <= TimeSpan.Zero) return;
         var position = Position;
@@ -579,6 +585,7 @@ public sealed class PlaybackEngine : IDisposable
         try
         {
             _player.Pause();
+            if (_smtc is not null) _smtc.IsEnabled = false;
             _player.Dispose();
         }
         catch

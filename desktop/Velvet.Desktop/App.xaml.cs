@@ -30,6 +30,7 @@ public partial class App : Application
         }
 
         base.OnStartup(e);
+        ApplyAppIdentity();
         ApplyAccent(Accents.All[0]);
 
         DispatcherUnhandledException += (_, args) =>
@@ -238,6 +239,25 @@ public partial class App : Application
         if (handle == IntPtr.Zero) return;
         ShowWindow(handle, 9);
         SetForegroundWindow(handle);
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
+    /// <summary>
+    /// A stable app identity keeps the media session (and anything that reads
+    /// it, including tray integrations) attached to Velvet across launches.
+    /// </summary>
+    private static void ApplyAppIdentity()
+    {
+        try
+        {
+            SetCurrentProcessExplicitAppUserModelID("VantaStealth.Velvet");
+        }
+        catch
+        {
+            // Older shells do not expose an explicit AUMID; playback is unaffected.
+        }
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

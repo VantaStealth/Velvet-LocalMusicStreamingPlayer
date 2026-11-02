@@ -39,16 +39,22 @@ object CloudApi {
     fun key(name: String): String =
         name.lowercase().filter { it.isLetterOrDigit() }
 
-    suspend fun manifest(force: Boolean = false): List<CloudEntry> = withContext(Dispatchers.IO) {
+    suspend fun manifest(
+        force: Boolean = false,
+        budgetMs: Long = 20_000L
+    ): List<CloudEntry> = withContext(Dispatchers.IO) {
         if (!force && cache.isNotEmpty() && System.currentTimeMillis() - cacheAt < 120_000L) {
             return@withContext cache
         }
 
+        val deadline = System.nanoTime() / 1_000_000L + budgetMs.coerceAtLeast(1_000L)
         var lastError: Exception? = null
         for (source in manifestUrls) {
+            val remaining = deadline - System.nanoTime() / 1_000_000L
+            if (remaining < 700L) break
             val connection = (URI(source).toURL().openConnection() as HttpURLConnection).apply {
-                connectTimeout = 20_000
-                readTimeout = 30_000
+                connectTimeout = minOf(4_000L, remaining).toInt()
+                readTimeout = minOf(6_000L, remaining).toInt()
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "Velvet-Mobile")
                 setRequestProperty("Accept", "application/json")
@@ -90,6 +96,8 @@ object CloudApi {
                 connection.disconnect()
             }
         }
+        // A previous manifest is still better than no cloud at all.
+        if (cache.isNotEmpty()) return@withContext cache
         throw lastError ?: IllegalStateException("Velvet Cloud is unreachable right now.")
     }
 

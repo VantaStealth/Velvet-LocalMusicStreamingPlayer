@@ -1096,7 +1096,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (!_engine.HasTrack) return;
         if (_scrubbing || DateTime.UtcNow < _seekHoldUntil)
         {
-            if (_engine.IsPlaying) _engine.UpdateTimeline();
+            _engine.UpdateTimeline();
             return;
         }
 
@@ -1107,7 +1107,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ? Math.Clamp(_engine.Position.TotalSeconds / duration, 0, 1)
             : 0;
         if (_disco) UpdateLyricLine();
-        if (_engine.IsPlaying) _engine.UpdateTimeline();
+        _engine.UpdateTimeline();
     }
 
     private void OnBassUpdated(float bass)
