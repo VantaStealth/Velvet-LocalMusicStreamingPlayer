@@ -12,6 +12,7 @@ import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.Locale
+import kotlin.math.abs
 
 data class LyricLine(val timeMs: Long, val text: String)
 
@@ -76,7 +77,7 @@ object Lyrics {
         durationMs: Long
     ): List<LyricLine> = withContext(Dispatchers.IO) {
         val key = cacheKey(title, artist, durationMs)
-        val deadline = System.nanoTime() / 1_000_000L + 10_000L
+        val deadline = System.nanoTime() / 1_000_000L + 8_000L
 
         cloudSidecar(context, mediaId, deadline)?.let { body ->
             writeCache(context, key, body)
@@ -101,6 +102,18 @@ object Lyrics {
         val local = loadLocal(context, mediaId, title, artist, durationMs)
         if (local.isNotEmpty()) return local
         return loadRemote(context, mediaId, title, artist, album, durationMs)
+    }
+
+    /** Drops a cached match so "Search again" can pick a better source. */
+    suspend fun forget(
+        context: Context,
+        title: String,
+        artist: String,
+        durationMs: Long
+    ) = withContext(Dispatchers.IO) {
+        runCatching {
+            File(cacheDir(context), "${cacheKey(title, artist, durationMs)}.lrc").delete()
+        }.let { }
     }
 
     private fun sidecar(context: Context, mediaId: String): String? = runCatching {
@@ -159,21 +172,82 @@ object Lyrics {
 
         if (nowMs() < deadline - 500L) {
             val search = "https://lrclib.net/api/search?q=" + encode("$artist $title")
-            val body = requestJson(search, deadline)
-            runCatching {
-                val results = org.json.JSONArray(body ?: return@runCatching)
-                for (index in 0 until results.length()) {
-                    val item = results.optJSONObject(index) ?: continue
-                    val synced = item.optString("syncedLyrics")
-                    if (synced.isNotBlank()) return synced
-                    if (plain == null) {
-                        plain = item.optString("plainLyrics").takeIf { it.isNotBlank() }
-                    }
+            val best = pickBest(requestJson(search, deadline), title, artist, durationMs)
+            if (best != null) {
+                val synced = best.optString("syncedLyrics")
+                if (synced.isNotBlank()) return synced
+                if (plain == null) {
+                    plain = best.optString("plainLyrics").takeIf { it.isNotBlank() }
                 }
             }
         }
 
         return plainToPseudoLrc(plain, durationMs) ?: fetchOvh(title, artist, durationMs, deadline)
+    }
+
+    /**
+     * LRCLIB search can return covers, karaoke tracks or same-titled songs.
+     * Only accept a result that matches the title, the artist and the duration.
+     */
+    private fun pickBest(
+        body: String?,
+        title: String,
+        artist: String,
+        durationMs: Long
+    ): JSONObject? {
+        if (body.isNullOrBlank()) return null
+        val results = runCatching { org.json.JSONArray(body) }.getOrNull() ?: return null
+        val wantTitle = normalize(title)
+        val wantArtist = normalize(artist)
+        var best: JSONObject? = null
+        var bestScore = 0.0
+        for (index in 0 until results.length()) {
+            val item = results.optJSONObject(index) ?: continue
+            val titleScore = similarity(wantTitle, normalize(item.optString("trackName")))
+            val artistScore = similarity(wantArtist, normalize(item.optString("artistName")))
+            if (titleScore < 0.55) continue
+            if (artistScore < 0.30) continue
+            var score = titleScore * 0.5 + artistScore * 0.5
+            val seconds = item.optLong("duration")
+            if (durationMs > 0 && seconds > 0) {
+                val delta = abs(durationMs / 1000.0 - seconds.toDouble())
+                if (delta > 12.0) continue
+                score += when {
+                    delta <= 2.0 -> 0.22
+                    delta <= 5.0 -> 0.12
+                    else -> 0.03
+                }
+            }
+            if (item.optString("syncedLyrics").isBlank()) score -= 0.18
+            if (score > bestScore) {
+                bestScore = score
+                best = item
+            }
+        }
+        return if (bestScore >= 0.55) best else null
+    }
+
+    private fun similarity(left: String, right: String): Double {
+        if (left.isEmpty() || right.isEmpty()) return 0.0
+        if (left == right) return 1.0
+        if (left.contains(right) || right.contains(left)) return 0.9
+        val leftTokens = left.split(' ').filter { it.isNotBlank() }.toSet()
+        val rightTokens = right.split(' ').filter { it.isNotBlank() }.toSet()
+        if (leftTokens.isEmpty() || rightTokens.isEmpty()) return 0.0
+        val shared = leftTokens.count { it in rightTokens }
+        return shared.toDouble() / maxOf(leftTokens.size, rightTokens.size)
+    }
+
+    private fun normalize(value: String): String {
+        var text = value.lowercase()
+        text = text.replace(Regex("""\([^)]*\)|\[[^]]*]"""), " ")
+        text = text.replace(Regex("""\b(feat|ft|featuring|with)\b\.?.*$"""), " ")
+        text = text.replace(
+            Regex("""\b(remaster(ed)?|radio edit|explicit|deluxe|bonus track|version)\b"""),
+            " "
+        )
+        text = text.replace(Regex("""[^a-z0-9]+"""), " ")
+        return text.trim().replace(Regex("""\s+"""), " ")
     }
 
     private fun fetchOvh(
@@ -213,33 +287,57 @@ object Lyrics {
     }
 
     private fun requestJson(url: String, deadline: Long): String? {
-        for (attempt in 1..2) {
+        for (attempt in 0..1) {
             val remaining = deadline - nowMs()
             if (remaining < 800L) return null
+            val userAgent =
+                "Velvet/2.0.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer)"
             val result = runCatching {
                 val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
                     connectTimeout = minOf(4_000L, remaining).toInt()
-                    readTimeout = minOf(6_000L, remaining).toInt()
+                    readTimeout = minOf(2_500L, remaining).toInt()
                     instanceFollowRedirects = true
-                    setRequestProperty(
-                        "User-Agent",
-                        "Velvet/1.10.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreaming)"
-                    )
+                    setRequestProperty("User-Agent", userAgent)
                     setRequestProperty("Accept", "application/json")
                 }
                 try {
                     val code = connection.responseCode
-                    if (code == 429 || code >= 500) return@runCatching null
-                    if (code !in 200..299) return@runCatching ""
-                    connection.inputStream.bufferedReader().use { it.readText() }
+                    if (code == 429 || code >= 500) null
+                    else if (code !in 200..299) ""
+                    else readBody(connection, deadline)
                 } finally {
                     connection.disconnect()
                 }
             }.getOrNull()
             if (result != null) return result.ifEmpty { null }
-            if (attempt < 2) Thread.sleep(260L)
+            if (attempt == 0) Thread.sleep(220L)
         }
         return null
+    }
+
+    /**
+     * Reads in chunks and gives up at the shared deadline, so a server that
+     * trickles bytes cannot keep the lyrics pane waiting forever.
+     */
+    private fun readBody(connection: HttpURLConnection, deadline: Long): String? {
+        val remaining = (deadline - nowMs()).coerceAtLeast(1_000L)
+        connection.connectTimeout = minOf(4_000L, remaining).toInt()
+        connection.readTimeout = minOf(2_500L, remaining).toInt()
+        val reader = connection.inputStream.bufferedReader()
+        try {
+            val buffer = CharArray(8_192)
+            val body = StringBuilder()
+            while (true) {
+                if (nowMs() >= deadline) return null
+                val read = reader.read(buffer)
+                if (read < 0) break
+                body.append(buffer, 0, read)
+                if (body.length > 400_000) break
+            }
+            return body.toString()
+        } finally {
+            runCatching { reader.close() }
+        }
     }
 
     private fun downloadText(url: String, deadline: Long): String? {
@@ -248,13 +346,13 @@ object Lyrics {
         return runCatching {
             val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
                 connectTimeout = minOf(4_000L, remaining).toInt()
-                readTimeout = minOf(6_000L, remaining).toInt()
+                readTimeout = minOf(2_500L, remaining).toInt()
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "Velvet-Mobile")
             }
             try {
                 if (connection.responseCode !in 200..299) return@runCatching null
-                connection.inputStream.bufferedReader().use { it.readText() }
+                readBody(connection, deadline)
             } finally {
                 connection.disconnect()
             }
@@ -267,7 +365,7 @@ object Lyrics {
 
     private fun cacheKey(title: String, artist: String, durationMs: Long): String {
         val digest = MessageDigest.getInstance("SHA-1")
-            .digest("$title|$artist|${durationMs / 1000}".toByteArray())
+            .digest("v2|$title|$artist|${durationMs / 1000}".toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
     }
 

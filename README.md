@@ -15,37 +15,31 @@ Velvet is a local music player for Windows and Android, built around the files y
 | Platform | File | Requirements |
 | --- | --- | --- |
 | Windows 10 2004+ / 11 (x64) | [`Velvet.exe`](Velvet.exe) | None — self-contained, no .NET install |
-| Android 8.0+ | [`Velvet-1.10.apk`](Velvet-1.10.apk) | None |
+| Android 8.0+ | [`Velvet-2.0.apk`](Velvet-2.0.apk) | None |
 
 The Windows build is a single self-contained executable. It carries its own .NET runtime, WPF, and native libraries, so a fresh PC can double-click it and play. There is no separate dependency installer to run.
 
-## What's new in 1.10
+## What's new in 2.0
 
-- **Disco rebuilt around sound, not shapes** — the wedges, border lines, stroke rings and tip ovals are gone. Soft beams enter from real fixtures at the edges, theme-coloured liquid rolls with the low end, and fireworks detonate above the floor. Every run starts with a different palette, burst order and ship path; nothing is precomputed or stored.
-- **Fireworks that hit the kick** — bursts are now triggered by onsets measured against a slow bass baseline instead of frame-to-frame deltas, which almost never fired. Each burst throws a trailing shell, a white-hot core, falling embers and a flash, and the whole stage shoves on the hit.
-- **Instant response** — the extra attack smoothing between the FFT and the stage is gone. The liquid follows the raw low band every frame, with only the decay smoothed, so the wave lands with the kick instead of a beat later.
+- **Fireworks locked to the kick** — bursts are triggered by onsets measured against a slow bass baseline with an adaptive threshold and a tempo-derived gate, so they land on the beat instead of drifting between frames. Each burst throws a trailing shell, a white-hot core, falling embers and a flash, and the whole stage shoves on the hit.
+- **Waves that breathe instead of snapping** — the low band now rises with a fast attack and falls with a slow release on both platforms. The liquid follows the music instead of jumping to every sample.
+- **No more white ball** — the hard white lamp dot at every beam fixture and the ship light are gone. Beams are read from their soft tinted fixtures only.
+- **Lyrics that load, match, and follow a seek** — a track loads its sidecar or cached lyrics instantly, then does one network pass with a hard 8-second budget. Matching is scored by normalised title, artist, and duration on both Windows and Android, so a cover or a same-name track no longer wins. Seeking and skipping re-anchor the lyric clock immediately instead of waiting for the next half-second tick. **Search again** forgets a bad cache entry and retries.
+- **Artists on every mobile surface** — the player header, now-playing rows, mini player, and queue all show the artist, with clear fallbacks for untagged files.
+- **Velvet channel past 100% again** — the mixer slider maps its whole track to 0–150%, commits the continuous value, and the playback service applies it at startup. Velvet can sit above a game or video again.
+- **Disco rebuilt around sound, not shapes** — soft beams enter from real fixtures at the edges, theme-coloured liquid rolls with the low end, and fireworks detonate above the floor. Every run starts with a different palette, burst order and ship path; nothing is precomputed or stored.
+- **Instant response** — the extra attack smoothing between the FFT and the stage is gone, so the wave lands with the kick instead of a beat later.
 - **Mobile holds 60 FPS** — spectrum updates no longer recompose the player screen. The disco stage, ring and strip animate in the draw phase with pooled particles, cached brushes and solid strokes, and the strip no longer builds forty gradients per frame. Lyrics advance on a frame clock rather than the half-second progress tick.
-- **Lyrics that stop getting stuck** — a track now loads its sidecar or cached lyrics instantly, then does one network pass with a hard 10-second budget: cloud copy first, then the synced catalogue. The pane reports back instead of hanging, offers **Search again**, and follows the current line smoothly, resyncing only after a real seek.
 - **A notification that belongs to the app** — framed, glowing artwork, a ticker with the artist, the queue position in the subtext, and no auto-dismiss while music is playing.
-- **Tray media follows the island** — Velvet now publishes an explicit AppUserModelID and re-publishes its SMTC status and timeline on every UI tick, including while paused, so tray mods read the same clock as the island. The session is shut down cleanly when Velvet exits.
-
-## What was new in 1.9
-
-- **Disco mode, rebuilt** — every light now has a source. Spotlights sweep in from the borders, corner washes stay local, theme-coloured liquid flows along the floor, sparks burst on kicks, shockwaves expand from the explosion, and a pirate ship occasionally sails through. Nothing is washed over the whole window.
-- **Lyrics that actually arrive** — Velvet looks for a sidecar first, then a cloud copy published beside the track, then a synced-lyrics catalogue. Tracks that only publish plain text are timed across the song, and the lyric stage animates each line in and out.
-- **Cloud lyrics** — 29 of the cloud tracks now carry `.lrc` assets in the same public release as their audio. Downloading a cloud track brings its lyrics with it.
-- **Readable, fluid volume pill** — the Android panel is no longer see-through: a near-opaque gradient keeps every label crisp. Dragging follows your finger continuously and eases the liquid and level instead of snapping, while the phone still receives valid OS volume steps.
-- **Any level, not just the phone's steps** — slide to whatever position you want. Velvet holds the continuous value and commits the nearest step your device supports, so it no longer sticks at 0, 13, 20, 27.
-- **Quiet when paused** — the desktop spectrum halo and its chrome are gone while playback is stopped, along with the idle line pulse.
-- **Veins hit every beat** — the desktop veins read the spectrum's smoothed bass on every rendered frame, so they breathe with the kick instead of flashing or skipping beats.
-- **Velvet Cloud failover** — manifests carry backup mirror URLs, and both apps try each source in order. The manifest itself has repository and CDN fallbacks. Backup hosts live entirely in the backend and never appear in either app.
+- **Tray media follows the island** — Velvet publishes an explicit AppUserModelID and re-publishes its SMTC status and timeline on every UI tick, including while paused, so tray mods read the same clock as the island. The session is shut down cleanly when Velvet exits.
+- **New home** — the project now lives at [`VantaStealth/Velvet-LocalMusicStreamingPlayer`](https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer), including Velvet Cloud.
 
 ## Velvet Cloud
 
 Velvet Cloud lives on a public GitHub release, outside this repository:
 
 ```
-https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json
+https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/manifest.json
 ```
 
 - The manifest and all 30 tracks are hardcoded into both apps. There is nothing to configure.
@@ -87,7 +81,9 @@ Open **LYRICS** on Android or **Disco mode** on desktop. Velvet resolves lyrics 
 2. The lyric sidecar published with that track in Velvet Cloud.
 3. A runtime lookup against a public synced-lyrics catalogue.
 
-Timed `[mm:ss.xx]` lines follow playback. If a catalogue only has unsynchronised text, Velvet spreads those lines across the track so the stage still moves. Lyrics are cached locally after the first lookup, and the app says plainly when a track has no lyrics instead of inventing them. `tools/fetch-lyrics.mjs` fills in sidecars for a local library and `tools/publish-cloud.mjs` uploads them beside the audio.
+Every candidate is scored against the track before it is used: the title and artist are normalised (brackets, `feat.`, remaster/radio edits and punctuation are stripped) and compared, and the duration has to be close. A synced result beats plain text. If nothing scores high enough, Velvet says the track has no lyrics instead of showing the wrong ones. A bad cache entry can be discarded with **Search again**.
+
+Timed `[mm:ss.xx]` lines follow playback and re-anchor on every seek. If a catalogue only has unsynchronised text, Velvet spreads those lines across the track so the stage still moves. Lyrics are cached locally after the first lookup. `tools/fetch-lyrics.mjs` fills in sidecars for a local library and `tools/publish-cloud.mjs` uploads them beside the audio.
 
 ## Volume controller, everywhere
 
@@ -95,9 +91,11 @@ Timed `[mm:ss.xx]` lines follow playback. If a catalogue only has unsynchronised
 
 **Android.** Open the **More** menu and choose **Volume keys takeover**. Enabling the Velvet accessibility service lets volume key presses open the full Velvet volume pill anywhere on the phone: on the lock screen, inside games, or with nothing playing at all. The panel is near-opaque for readability, and its liquid, bubbles, and level readout ease into every change. Drag anywhere on the rail to pick any level; Velvet keeps the continuous value and commits the closest step the device exposes. Tap **MIX** on the pill for Media, Ring, Alerts, Alarm, Calls, and the Velvet channel. The service only filters volume keys and never reads screen content.
 
-Android exposes one shared media stream to every app, so the mixer controls device streams while the **Velvet channel** slider is separate; it can push Velvet up to 150% so it sits above a game or video.
+Android exposes one shared media stream to every app, so the mixer controls device streams while the **Velvet channel** slider is separate; it can push Velvet from 0% to **150%** so it sits above a game or video.
 
 ## The floating island
+
+![Velvet desktop disco](docs/velvet-desktop-disco.png)
 
 - Drag it anywhere; it snaps to the top edge and to the horizontal centre.
 - Double-click to switch between the full island and the one-line minimal island.
@@ -105,6 +103,7 @@ Android exposes one shared media stream to every app, so the mixer controls devi
 - Drag its right edge to resize it horizontally.
 - While dragging, a glowing blue centre line appears when the minimal island is snapped to the top middle, then disappears when you release.
 - Resize, rotate, opacity, and minimal state are remembered between launches.
+- It follows the same playback clock as the tray media session, so both read the same time at all times.
 
 ## On Android
 
@@ -125,19 +124,82 @@ Android exposes one shared media stream to every app, so the mixer controls devi
 - Procedural cover art for tracks without embedded artwork.
 - Favourites, sorting, search, albums, and a daily Velvet Mix.
 - **DISCO** mode for beat-synced lights, spark bursts, and animated lyrics.
-- Per-stream mixer for media, ring, alerts, alarms, and calls, plus the Velvet channel.
+- Per-stream mixer for media, ring, alerts, alarms, and calls, plus the 150% Velvet channel.
 
-## Features
+## Everything in Velvet
 
-- **Local library** — point Velvet at a folder and it indexes MP3, M4A/AAC, FLAC, WAV, OGG, and Opus files, tags, and embedded artwork.
-- **Velvet Cloud** — download missing tracks from the hosted shared library on both platforms, with backend-only mirror failover.
-- **Real spectrum** — 48-band playback analysis drives the desktop lines, the mobile visualizer, and the vein beat response.
-- **Disco mode** — sourced spotlights, corner light, liquid floors, kick explosions, particles, a passing ship, and animated lyrics on both platforms.
-- **Tray-first Windows app** — closing the window keeps playback alive. Velvet pins itself next to Wi-Fi, volume, and battery in the notification area.
-- **Starts with Windows, stays out of the way** — the tray icon is registered at boot; clicking it opens the app, and it is not forced open on login.
-- **Windows media session** — SMTC integration so media keys and system media controls drive playback.
-- **Portable window chrome** — custom title bar, rounded corners, per-monitor DPI awareness, and work-area clamping. No window mods required.
-- **No ads, no tracking, no account** — the only network access is Velvet Cloud downloads.
+### Library
+
+- Point Velvet at a folder and it indexes MP3, M4A/AAC, FLAC, WAV, OGG, Opus, and WMA files, tags, and embedded artwork.
+- Automatic rescan when the folder changes; the Windows app can also rescan on demand.
+- Search across title, artist, and album.
+- Sort by title, artist, album, or duration.
+- Favourites, with a dedicated filter.
+- Album view with a full album track list.
+- Daily Velvet Mix — a fresh rotation that changes each day.
+- Track durations, album names, and clear fallbacks for files with missing tags.
+- Drag-and-drop or picker-based folder selection, remembered between launches.
+- A scan screen that reports the file being read and overall progress.
+
+### Playback
+
+- Background playback that survives the window closing on Windows and the app leaving the foreground on Android.
+- Real media sessions: SMTC and media keys on Windows, Media3 session and lock-screen controls on Android.
+- Play/pause, previous, next, seek, shuffle, and queue position.
+- Playback continues from the tray on Windows; the tray icon opens the app.
+- Velvet registers at boot and stays out of the way — it is not forced open on login.
+- Audio focus handling on Android, so Velvet pauses for calls and other players.
+- No ads, no tracking, no account.
+
+### Visuals
+
+- 48-band playback analysis drives the desktop lines, the mobile visualizer, the disco stage, and the vein beat response.
+- Desktop spectrum visualizer with a smoothed low-end response.
+- Desktop disco mode: sourced spotlights and corner washes, a liquid floor, kick-locked fireworks, embers, shockwaves, a passing ship, and an animated lyric stage.
+- Mobile disco mode: the same sound-driven stage, plus a spectrum ring and an animated lyric strip, all drawn at 60 FPS.
+- Each disco run picks its own palette, burst order, and ship path at runtime.
+- Per-track procedural cover art for tracks without embedded artwork, generated deterministically from the track.
+- Animated glow sliders, liquid transitions, and framed artwork throughout the apps.
+
+### Velvet Cloud
+
+- Hosted shared library of 30 tracks, hardcoded into both apps; nothing to configure.
+- Missing-track detection with a one-tap download offer on launch.
+- Track audio and matching `.lrc` sidecars download together.
+- Download progress, cancellation, and automatic cleanup of partial files.
+- Backend-only mirror failover, plus manifest fallbacks through the repository and its CDN copy.
+- Publishing from desktop through GitHub Credential Manager.
+
+### Volume
+
+- System-wide volume key takeover on Windows with a custom glass HUD.
+- Full-screen volume pill on Android through the optional accessibility service.
+- Continuous drag anywhere on the rail, not just the device's discrete steps.
+- Near-opaque, readable panel with liquid, bubbles, and a live level readout.
+- Per-stream mixer for media, ring, alerts, alarm, and calls.
+- Separate Velvet channel from 0% to 150%.
+- In-app volume HUD when the accessibility service is off.
+- The Windows hook is active only while Velvet runs; quitting returns the keys to Windows.
+
+### Desktop shell
+
+- Floating dynamic island with snap-to-top, snap-to-centre, and a blue snap line.
+- Full and minimal island layouts, double-click switching, and horizontal resize.
+- Remembered island geometry, rotation, opacity, and mode.
+- Portable custom window chrome: rounded corners, custom title bar, per-monitor DPI awareness, and work-area clamping.
+- Tray-first design with a white tray icon and a clean session shutdown.
+- Velvet Cloud download and publish from the app.
+- Local settings, library cache, generated covers, and logs in `%LOCALAPPDATA%\Velvet`.
+
+### Android shell
+
+- Jetpack Compose UI with a bottom mini player and a full player screen.
+- Onboarding for first-run folder selection.
+- Favourites, albums, search, sorting, and the daily mix.
+- DISCO mode and LYRICS mode with synced line animation.
+- Framed media notification with artwork, artist ticker, queue position, and no auto-dismiss while playing.
+- Lock-screen artwork and controls.
+- Procedural covers, accent theming, and haptic-feeling transitions.
 
 ## First run
 
@@ -153,9 +215,9 @@ Settings, the library cache, generated covers, and logs live in `%LOCALAPPDATA%\
 ```
 app/                        Android app (Kotlin, Jetpack Compose, Media3)
 desktop/Velvet.Desktop/     Windows app (C#, WPF, NAudio, TagLibSharp)
-docs/                       Desktop screenshot
+docs/                       Desktop screenshots
 mobile screenshots/         Android screenshots used above
-tools/                      Cloud publishing and screenshot helpers
+tools/                      Cloud publishing, lyric fetching, and screenshot helpers
 ```
 
 Audio files are **not** stored in this repository. They live in the public `velvet-cloud` GitHub release and are downloaded by the apps.
@@ -197,6 +259,7 @@ node tools/publish-cloud.mjs
 - Tray pinning uses the same per-user registry setting Windows writes when you drag an icon out of the overflow flyout.
 - The Windows volume hook is active only while Velvet is running. Quitting Velvet returns volume keys to Windows.
 - Android's accessibility service is optional. Without it, the in-app volume HUD still works while Velvet is open.
+- Backup hostnames are configuration only. No app screen names or links a mirror.
 
 ## License
 

@@ -23,6 +23,8 @@ import com.velvet.music.data.Track
 import com.velvet.music.data.VelvetAccent
 import com.velvet.music.playback.PlaybackService
 import com.velvet.music.playback.SpectrumBus
+import com.velvet.music.volume.ACTION_APP_VOLUME
+import com.velvet.music.volume.EXTRA_VOLUME
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -194,7 +196,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 mediaController.addListener(playerListener)
                 mediaController.shuffleModeEnabled = prefs.shuffle
                 mediaController.repeatMode = prefs.repeatMode
-                mediaController.volume = prefs.appVolume
+                sendAppVolume(prefs.appVolume)
                 _player.update { it.copy(connected = true) }
                 val pending = pendingPlay
                 when {
@@ -442,7 +444,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val volume = value.coerceIn(0f, 1.5f)
         prefs.appVolume = volume
         _appVolume.value = volume
-        controller?.volume = volume
+        sendAppVolume(volume)
+    }
+
+    private fun sendAppVolume(volume: Float) {
+        app.sendBroadcast(
+            Intent(ACTION_APP_VOLUME)
+                .setPackage(app.packageName)
+                .putExtra(EXTRA_VOLUME, volume)
+        )
     }
 
     fun openCloud() {

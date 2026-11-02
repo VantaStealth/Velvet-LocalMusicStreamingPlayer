@@ -834,11 +834,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Directory.CreateDirectory(cache);
             var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
                 System.Text.Encoding.UTF8.GetBytes(
-                    $"{track.Title}|{track.Artist}|{track.DurationMs / 1000}")));
+                    $"v2|{track.Title}|{track.Artist}|{track.DurationMs / 1000}")));
             var cached = Path.Combine(cache, key + ".lrc");
 
             var body = File.Exists(cached) ? await File.ReadAllTextAsync(cached) : null;
-            body ??= await FetchOnlineLyricsAsync(track);
+            if (body is null)
+            {
+                // A real lookup can involve three endpoints with retries. Cap the
+                // whole pass so a stalled catalogue reports "no lyrics" instead
+                // of leaving the stage on "Finding lyrics…" forever.
+                var fetch = FetchOnlineLyricsAsync(track);
+                var finished = await Task.WhenAny(fetch, Task.Delay(TimeSpan.FromSeconds(10)));
+                body = finished == fetch ? await fetch : null;
+            }
             if (CurrentId != requestedId) return;
 
             var parsed = body is null ? new List<(TimeSpan, string)>() : ParseLrc(body);
@@ -890,20 +898,78 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var results = await TryGetLyricsJsonAsync(search);
         if (results is not null)
         {
-            using var list = JsonDocument.Parse(results);
-            if (list.RootElement.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in list.RootElement.EnumerateArray())
-                {
-                    var synced = ReadSynced(item);
-                    if (synced is not null) return synced;
-                    plain ??= ReadPlain(item);
-                }
-            }
+            var synced = PickBestSynced(results, track);
+            if (synced is not null) return synced;
         }
 
         var pseudo = PlainToPseudoLrc(plain, track.DurationMs);
         return pseudo ?? await FetchOvhLyricsAsync(track);
+    }
+
+    /// <summary>
+    /// LRCLIB search can return covers, karaoke tracks or same-titled songs.
+    /// Only accept a synced result that matches the title, artist and duration.
+    /// </summary>
+    private static string? PickBestSynced(string json, Track track)
+    {
+        using var list = JsonDocument.Parse(json);
+        if (list.RootElement.ValueKind != JsonValueKind.Array) return null;
+        var wantTitle = NormalizeLyricText(track.Title);
+        var wantArtist = NormalizeLyricText(track.Artist);
+        double bestScore = 0;
+        string? bestSynced = null;
+        foreach (var item in list.RootElement.EnumerateArray())
+        {
+            var titleScore = Similarity(
+                wantTitle,
+                NormalizeLyricText(item.TryGetProperty("trackName", out var title) ? title.GetString() : ""));
+            var artistScore = Similarity(
+                wantArtist,
+                NormalizeLyricText(item.TryGetProperty("artistName", out var artist) ? artist.GetString() : ""));
+            if (titleScore < 0.55 || artistScore < 0.30) continue;
+            var synced = ReadSynced(item);
+            if (synced is null) continue;
+
+            var score = titleScore * 0.5 + artistScore * 0.5;
+            if (track.DurationMs > 0 &&
+                item.TryGetProperty("duration", out var duration) &&
+                duration.TryGetDouble(out var seconds) && seconds > 0)
+            {
+                var delta = Math.Abs(track.DurationMs / 1000.0 - seconds);
+                if (delta > 12) continue;
+                score += delta <= 2 ? 0.22 : delta <= 5 ? 0.12 : 0.03;
+            }
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestSynced = synced;
+            }
+        }
+        return bestScore >= 0.55 ? bestSynced : null;
+    }
+
+    private static double Similarity(string left, string right)
+    {
+        if (left.Length == 0 || right.Length == 0) return 0;
+        if (left == right) return 1;
+        if (left.Contains(right) || right.Contains(left)) return 0.9;
+        var leftTokens = left.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        var rightTokens = right.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        if (leftTokens.Count == 0 || rightTokens.Count == 0) return 0;
+        var shared = leftTokens.Count(token => rightTokens.Contains(token));
+        return (double)shared / Math.Max(leftTokens.Count, rightTokens.Count);
+    }
+
+    private static string NormalizeLyricText(string? value)
+    {
+        var text = (value ?? string.Empty).ToLowerInvariant();
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\([^)]*\)|\[[^]]*\]", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(
+            text, @"\b(feat|ft|featuring|with)\b\.?.*$", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(
+            text, @"\b(remaster(ed)?|radio edit|explicit|deluxe|bonus track|version)\b", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"[^a-z0-9]+", " ");
+        return System.Text.RegularExpressions.Regex.Replace(text.Trim(), @"\s+", " ");
     }
 
     private static async Task<string?> FetchOvhLyricsAsync(Track track)
@@ -976,7 +1042,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.UserAgent.ParseAdd(
-                    "Velvet/1.9.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreaming)");
+                    "Velvet/2.0.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer)");
                 request.Headers.Accept.ParseAdd("application/json");
                 using var response = await LyricsHttp.SendAsync(request);
                 if ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500)

@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "
 import path from "node:path";
 
 const owner = "VantaStealth";
-const repo = "Velvet-LocalMusicStreaming";
+const repo = "Velvet-LocalMusicStreamingPlayer";
 const tag = "velvet-cloud";
 const musicDir = "C:\\Users\\Umar\\Velvet Cloud";
 const outManifest = path.resolve("tools/velvet-cloud-manifest.json");

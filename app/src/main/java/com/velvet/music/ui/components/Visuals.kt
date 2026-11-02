@@ -34,10 +34,12 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 private const val DiscoParticleCap = 300
@@ -259,7 +261,6 @@ private fun DrawScope.drawBeam(
     }
 
     drawCircle(lamp, radius = 15.dp.toPx(), center = origin, alpha = 0.55f + level * 0.35f)
-    drawCircle(Color.White, radius = (1.8f + level * 1.2f).dp.toPx(), center = origin, alpha = 0.9f)
 }
 
 private fun DrawScope.drawLiquid(
@@ -345,7 +346,6 @@ private fun DrawScope.drawShip(
         drawPath(paths.jib, Color(0xE0120A1C))
         drawPath(paths.jib, rim.copy(alpha = 0.35f), style = Stroke(width = 1f))
         drawCircle(tint.copy(alpha = 0.55f), radius = 9f, center = Offset(70f, -8f))
-        drawCircle(Color.White, radius = 2.2f, center = Offset(70f, -8f))
     }
 }
 
@@ -417,6 +417,9 @@ private class DiscoScene {
     var baseline = 0f
     var input = 0f
     var lastBurst = -10f
+    var onsetMean = 0.015f
+    var onsetDev = 0.02f
+    var beatGap = 0.5f
     var shake = 0f
     var colorIndex = random.nextInt(4)
     var colorClock = 0f
@@ -434,9 +437,9 @@ private class DiscoScene {
         input = value
 
         if (value > level) {
-            level = value
+            level += (value - level) * (1f - exp(-42f * dt))
         } else {
-            level += (value - level) * (1f - exp(-9f * dt))
+            level += (value - level) * (1f - exp(-8f * dt))
         }
 
         shake *= exp(-9f * dt)
@@ -444,10 +447,19 @@ private class DiscoScene {
         swellX += swellSpeed * dt
         baseline += (value - baseline) * (1f - exp(-2.6f * dt))
 
-        // Onsets are measured against a slow baseline: per-frame deltas are tiny,
-        // so this is what makes the fireworks land on the kick.
+        // Onsets are scored against a slow baseline and a running noise floor,
+        // so a burst fires on the kick rather than on every small rise. The
+        // refractory period tracks the song's own beat spacing.
         val onset = value - baseline
-        if (playing && value > 0.28f && onset > 0.095f && time - lastBurst > 0.22f) {
+        val gate = minOf(0.55f, maxOf(0.18f, beatGap * 0.7f))
+        val threshold = onsetMean + onsetDev * 1.15f + 0.035f
+        if (playing && value > 0.30f && onset > threshold && onset > 0.045f &&
+            time - lastBurst > gate
+        ) {
+            if (lastBurst > 0f) {
+                val gap = time - lastBurst
+                if (gap in 0.2f..2f) beatGap += (gap - beatGap) * 0.16f
+            }
             lastBurst = time
             val strength = (0.35f + onset * 2.4f + value * 0.55f).coerceIn(0.35f, 1f)
             burst(strength)
@@ -461,6 +473,11 @@ private class DiscoScene {
                 colorClock = time
             }
         }
+
+        val rise = onset.coerceAtLeast(0f)
+        val learn = 1f - exp(-3.5f * dt)
+        onsetMean += (rise - onsetMean) * learn
+        onsetDev += (abs(rise - onsetMean) - onsetDev) * learn
 
         if (time - colorClock > 6.5f) {
             colorIndex = (colorIndex + 1) % paletteSize

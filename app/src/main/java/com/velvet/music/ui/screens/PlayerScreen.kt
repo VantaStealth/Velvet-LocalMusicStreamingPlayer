@@ -59,7 +59,6 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -116,7 +115,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -168,6 +166,9 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
+        if (lyricAttempt > 0) {
+            Lyrics.forget(context, player.title, player.artist, player.durationMs)
+        }
         lyricMessage = "Finding synced lyrics…"
         val remote = withContext(Dispatchers.IO) {
             Lyrics.loadRemote(
@@ -314,9 +315,11 @@ fun PlayerScreen(
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = "From your folder",
+                        text = player.artist.ifBlank { "From your folder" },
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextTertiary
+                        color = TextTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 CircleIconButton(
@@ -415,7 +418,7 @@ fun PlayerScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = player.artist,
+                        text = player.artist.ifBlank { "Unknown artist" },
                         style = MaterialTheme.typography.titleMedium,
                         color = TextSecondary,
                         maxLines = 1,
@@ -934,20 +937,19 @@ private fun LyricsPane(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var smoothPosition by remember { mutableLongStateOf(positionMs) }
     val activeIndex = remember { mutableIntStateOf(-1) }
 
-    // The clock and the active-line lookup live in one frame loop. Only the
-    // line index is observable state, so the pane recomposes when a line
-    // changes instead of sixty times a second.
-    LaunchedEffect(lines, playing) {
+    // The clock is re-anchored to the player every time its reported position
+    // changes, so a seek (or any skip) moves the lyrics immediately. Between
+    // reports the frame clock keeps lines advancing smoothly.
+    LaunchedEffect(lines, playing, positionMs) {
         if (lines.isEmpty()) {
             activeIndex.intValue = -1
             return@LaunchedEffect
         }
-        smoothPosition = positionMs
+        var clock = positionMs
         fun refresh() {
-            activeIndex.intValue = lines.indexOfLast { it.timeMs <= smoothPosition }
+            activeIndex.intValue = lines.indexOfLast { it.timeMs <= clock }
                 .coerceAtLeast(0)
         }
         refresh()
@@ -956,19 +958,10 @@ private fun LyricsPane(
         var last = 0L
         while (true) {
             withFrameNanos { now ->
-                if (last != 0L) smoothPosition += (now - last) / 1_000_000L
+                if (last != 0L) clock += (now - last) / 1_000_000L
                 last = now
             }
             refresh()
-        }
-    }
-
-    LaunchedEffect(positionMs) {
-        if (lines.isEmpty()) return@LaunchedEffect
-        if (abs(positionMs - smoothPosition) > 450L) {
-            smoothPosition = positionMs
-            activeIndex.intValue = lines.indexOfLast { it.timeMs <= positionMs }
-                .coerceAtLeast(0)
         }
     }
 

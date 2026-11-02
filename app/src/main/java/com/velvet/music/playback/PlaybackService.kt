@@ -62,6 +62,7 @@ class PlaybackService : MediaSessionService() {
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
             .build()
+        player.volume = com.velvet.music.data.Prefs(this).appVolume.coerceIn(0f, 1.5f)
         exoPlayer = player
 
         val channelId = "velvet_now_playing"

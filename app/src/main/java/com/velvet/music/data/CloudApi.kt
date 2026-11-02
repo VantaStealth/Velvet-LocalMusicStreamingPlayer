@@ -23,14 +23,14 @@ data class CloudEntry(
 object CloudApi {
 
     const val MANIFEST_URL =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=7"
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/manifest.json?v=8"
 
     // The same manifest is committed to the repository, so a removed release
     // asset does not strand clients that still have working backup mirrors.
     private val manifestUrls = listOf(
         MANIFEST_URL,
-        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=7",
-        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=7"
+        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/main/tools/velvet-cloud-manifest.json?v=8",
+        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreamingPlayer@main/tools/velvet-cloud-manifest.json?v=8"
     )
 
     private var cache: List<CloudEntry> = emptyList()

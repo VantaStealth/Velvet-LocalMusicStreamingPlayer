@@ -11,19 +11,19 @@ namespace Velvet.Desktop.Services;
 public static class CloudLibraryService
 {
     public const string ManifestUrl =
-        "https://github.com/VantaStealth/Velvet-LocalMusicStreaming/releases/download/velvet-cloud/manifest.json?v=7";
+        "https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/releases/download/velvet-cloud/manifest.json?v=8";
 
     // If the release asset is unavailable, the same manifest is mirrored in the
     // repository itself so clients can still discover backup track sources.
     private static readonly string[] ManifestSources =
     {
         ManifestUrl,
-        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreaming/main/tools/velvet-cloud-manifest.json?v=7",
-        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreaming@main/tools/velvet-cloud-manifest.json?v=7"
+        "https://raw.githubusercontent.com/VantaStealth/Velvet-LocalMusicStreamingPlayer/main/tools/velvet-cloud-manifest.json?v=8",
+        "https://cdn.jsdelivr.net/gh/VantaStealth/Velvet-LocalMusicStreamingPlayer@main/tools/velvet-cloud-manifest.json?v=8"
     };
 
     private const string Owner = "VantaStealth";
-    private const string Repo = "Velvet-LocalMusicStreaming";
+    private const string Repo = "Velvet-LocalMusicStreamingPlayer";
     private const string ReleaseTag = "velvet-cloud";
 
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)

@@ -71,6 +71,10 @@ public sealed class DiscoOverlay : FrameworkElement
     private double _colorClock;
     private double _lastBurst = -10;
     private int _burstCount;
+    private double _onsetMean = 0.015;
+    private double _onsetDev = 0.02;
+    private double _beatGap = 0.5;
+    private double _lastPulseAt = -1;
     private double _nextShip = 8;
     private double _shipStart = -100;
     private double _shipDirection = 1;
@@ -104,8 +108,8 @@ public sealed class DiscoOverlay : FrameworkElement
     }
 
     /// <summary>
-    /// Fresh low-band energy from the current frame. Attack is immediate so the
-    /// stage never trails the kick; only the decay is smoothed.
+    /// Fresh low-band energy for the current frame. The stage eases into each
+    /// rise over a few frames instead of snapping, then decays smoothly.
     /// </summary>
     public void Pulse(float bass)
     {
@@ -113,15 +117,20 @@ public sealed class DiscoOverlay : FrameworkElement
         _input = value;
         _lastPulse = _time;
 
-        if (value > _bass) _bass = value;
-
-        // Onsets are measured against a slow baseline: consecutive frames rarely
-        // jump far, so a frame-to-frame delta would almost never fire.
+        // Onsets are scored against a slow baseline and a running noise floor,
+        // so a burst fires on the kick rather than on every small rise. The
+        // refractory period tracks the song's own beat spacing.
         var onset = value - _baseline;
-        var strongRise = onset > 0.095 && value > 0.28;
-        var sustained = value > 0.82 && _time - _lastBurst > 0.9;
-        if ((strongRise || sustained) && _time - _lastBurst > 0.22)
+        var gate = Math.Min(0.55, Math.Max(0.18, _beatGap * 0.7));
+        var threshold = _onsetMean + _onsetDev * 1.15 + 0.035;
+        if (value > 0.30 && onset > threshold && onset > 0.045 &&
+            _time - _lastBurst > gate)
         {
+            if (_lastBurst > 0)
+            {
+                var gap = _time - _lastBurst;
+                if (gap is > 0.2 and < 2.0) _beatGap += (gap - _beatGap) * 0.16;
+            }
             _lastBurst = _time;
             var strength = Math.Clamp(0.35 + onset * 2.4 + value * 0.55, 0.35, 1.0);
             Explode(strength);
@@ -138,6 +147,12 @@ public sealed class DiscoOverlay : FrameworkElement
             }
         }
 
+        var rise = Math.Max(0, onset);
+        var sincePulse = _lastPulseAt < 0 ? 1.0 / 60.0 : Math.Clamp(_time - _lastPulseAt, 0.001, 0.1);
+        var learn = 1 - Math.Exp(-3.5 * sincePulse);
+        _onsetMean += (rise - _onsetMean) * learn;
+        _onsetDev += (Math.Abs(rise - _onsetMean) - _onsetDev) * learn;
+        _lastPulseAt = _time;
     }
 
     public void Reset()
@@ -147,6 +162,10 @@ public sealed class DiscoOverlay : FrameworkElement
         _bass = 0;
         _baseline = 0;
         _input = 0;
+        _onsetMean = 0.015;
+        _onsetDev = 0.02;
+        _beatGap = 0.5;
+        _lastPulseAt = -1;
         _shake = 0;
         _swellAmp = 0;
         _shipStart = -100;
@@ -194,8 +213,8 @@ public sealed class DiscoOverlay : FrameworkElement
         // The input is refreshed every frame while music plays; if the pulses
         // stop, let it fall away quickly instead of freezing on the last kick.
         if (_time - _lastPulse > 0.14) _input *= Math.Exp(-24 * dt);
-        if (_input > _bass) _bass = _input;
-        else _bass += (_input - _bass) * (1 - Math.Exp(-9 * dt));
+        var attack = _input > _bass ? 42.0 : 8.0;
+        _bass += (_input - _bass) * (1 - Math.Exp(-attack * dt));
         _baseline += (_bass - _baseline) * (1 - Math.Exp(-2.6 * dt));
 
         if (_time - _colorClock > 6.5)
@@ -478,7 +497,6 @@ public sealed class DiscoOverlay : FrameworkElement
         var glow = 12 + _bass * 18;
         dc.PushOpacity(0.55 + _bass * 0.35);
         dc.DrawEllipse(_bloom[color], null, lamp, glow, glow);
-        dc.DrawEllipse(Brushes.White, null, lamp, 2.2 + _bass * 1.4, 2.2 + _bass * 1.4);
         dc.Pop();
     }
 
@@ -551,7 +569,6 @@ public sealed class DiscoOverlay : FrameworkElement
 
         var lamp = new Point(70, -8);
         dc.DrawEllipse(_bloom[(color + 3) % Palette.Length], null, lamp, 14, 14);
-        dc.DrawEllipse(Brushes.White, null, lamp, 2, 2);
 
         dc.Pop();
         dc.Pop();

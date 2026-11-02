@@ -268,8 +268,10 @@ class VolumeOverlayView(context: Context) : View(context) {
 
     private fun applySlider(hit: SliderHit, x: Float) {
         if (hit.trackWidth <= 0f) return
-        val level = ((x - hit.trackLeft) / hit.trackWidth).coerceIn(0f, 1f)
+        val fraction = ((x - hit.trackLeft) / hit.trackWidth).coerceIn(0f, 1f)
         if (hit.kind == KIND_APP) {
+            // The last third of the track is the boost region: up to +50%.
+            val level = fraction * APP_VOLUME_MAX
             appVolume = level
             prefs.appVolume = level
             context.sendBroadcast(
@@ -279,7 +281,7 @@ class VolumeOverlayView(context: Context) : View(context) {
             )
             invalidate()
         } else {
-            applyStream(hit.index, level)
+            applyStream(hit.index, fraction)
         }
     }
 
@@ -476,12 +478,12 @@ class VolumeOverlayView(context: Context) : View(context) {
         textPaint.textSize = dp(13f)
         textPaint.color = 0xFFF6F3FA.toInt()
         canvas.drawText("Velvet channel", card.left + dp(36f), channelTop, textPaint)
-        val channelLevel = if (draggingKind == KIND_APP) appVolume else displayAppVolume
+        val channelGain = if (draggingKind == KIND_APP) appVolume else displayAppVolume
         textPaint.textAlign = Paint.Align.RIGHT
         textPaint.textSize = dp(11f)
         textPaint.color = bright.withAlpha(230)
         canvas.drawText(
-            "${(channelLevel * 100f).roundToInt()}%",
+            "${(channelGain * 100f).roundToInt()}%",
             card.right - dp(20f), channelTop, textPaint
         )
         textPaint.textAlign = Paint.Align.LEFT
@@ -500,7 +502,10 @@ class VolumeOverlayView(context: Context) : View(context) {
         val channelY = channelTop + dp(55f)
         val trackLeft = card.left + dp(20f)
         val trackRight = card.right - dp(20f)
-        drawSlider(canvas, trackLeft, trackRight, channelY, channelLevel)
+        drawSlider(
+            canvas, trackLeft, trackRight, channelY,
+            (channelGain / APP_VOLUME_MAX).coerceIn(0f, 1f)
+        )
         sliderHits += sliderHit(KIND_APP, 0, trackLeft, trackRight, channelY)
 
         bodyPaint.textSize = dp(10f)
@@ -845,5 +850,6 @@ class VolumeOverlayView(context: Context) : View(context) {
     private companion object {
         const val KIND_STREAM = 0
         const val KIND_APP = 1
+        const val APP_VOLUME_MAX = 1.5f
     }
 }

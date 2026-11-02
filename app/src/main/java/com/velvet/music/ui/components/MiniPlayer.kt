@@ -98,7 +98,7 @@ fun MiniPlayer(
                     )
                     Spacer(Modifier.size(1.dp))
                     Text(
-                        text = player.artist,
+                        text = player.artist.ifBlank { "Unknown artist" },
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         maxLines = 1,

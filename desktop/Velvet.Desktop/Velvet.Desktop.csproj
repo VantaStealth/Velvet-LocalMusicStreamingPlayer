@@ -11,7 +11,7 @@
     <RootNamespace>Velvet.Desktop</RootNamespace>
     <ApplicationIcon>Assets\velvet.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.10.0</Version>
+    <Version>2.0.0</Version>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>

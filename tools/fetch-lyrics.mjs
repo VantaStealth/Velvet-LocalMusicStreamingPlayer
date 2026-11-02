@@ -5,7 +5,7 @@ import path from "node:path";
 const musicDir = process.argv[2] || "C:\\Users\\Umar\\Velvet Cloud";
 const metadataScript = path.resolve("tools/lyrics-metadata.ps1");
 const userAgent =
-  "Velvet/1.9.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreaming)";
+  "Velvet/2.0.0 (https://github.com/VantaStealth/Velvet-LocalMusicStreamingPlayer)";
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
